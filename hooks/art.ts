@@ -1,7 +1,7 @@
 // The desktop HUD as SVG markup: the medallion and bars on the left, the quest tracker on the right.
 import type { SignKey } from '../types'
-import { ASH, BLOOD, GOLD, GOLD_HI, LOW_VITALITY, PARCHMENT, SIGNS, clip } from './lore'
-import type { QuestLine } from './lore'
+import { ASH, BLOOD, GOLD, GOLD_HI, LOW_VITALITY, PARCHMENT, SIGNS, clip, money } from './lore'
+import type { Lang, QuestLine } from './lore'
 
 export const HUD_H = 40
 export const CLUSTER_W = 350
@@ -10,8 +10,15 @@ const TITLE_FONT = "Cinzel, 'Trajan Pro', 'Big Caslon', 'Hoefler Text', Baskervi
 const BODY_FONT = "'Hoefler Text', Baskerville, 'Palatino Linotype', Palatino, Georgia, serif"
 const NUM_FONT = "Baskerville, 'Hoefler Text', 'Palatino Linotype', Palatino, Georgia, serif"
 const NUMS = 'style="font-variant-numeric: lining-nums tabular-nums"'
+// Cinzel and Big Caslon have no Cyrillic, so Russian keeps to serifs that do.
+const CYRILLIC_FONT = "'Hoefler Text', Baskerville, 'PT Serif', Georgia, serif"
+const FONTS: Record<Lang, { title: string; body: string }> = {
+  en: { title: TITLE_FONT, body: BODY_FONT },
+  ru: { title: CYRILLIC_FONT, body: CYRILLIC_FONT },
+}
 
 export type ClusterArt = {
+  lang: Lang
   sign: SignKey | null
   isWorking: boolean
   vitality: number
@@ -155,7 +162,7 @@ export const clusterSvg = (a: ClusterArt): string => {
     `<text x="${NX}" y="20.4" font-family="${NUM_FONT}" font-size="12.5" ${NUMS} fill="${isLow ? '#FF8A73' : PARCHMENT}" filter="url(#shadow)">${Math.round(v)}%</text>` +
     `<circle cx="${NX + 3.6}" cy="29.4" r="3.6" fill="url(#gold)" stroke="#4E3A1B" stroke-width=".5"/>` +
     `<circle cx="${NX + 3.6}" cy="29.4" r="1.9" fill="none" stroke="#7A5A26" stroke-width=".7"/>` +
-    `<text x="${NX + 10}" y="33.2" font-family="${NUM_FONT}" font-size="11.5" ${NUMS} fill="${GOLD}" filter="url(#shadow)">${a.usd === null ? '—' : a.usd.toFixed(2)}</text>`
+    `<text x="${NX + 10}" y="33.2" font-family="${NUM_FONT}" font-size="11.5" ${NUMS} fill="${GOLD}" filter="url(#shadow)">${a.usd === null ? '—' : money(a.usd, a.lang)}</text>`
 
   const LX = 326
   const level =
@@ -188,8 +195,9 @@ export const clusterSvg = (a: ClusterArt): string => {
   )
 }
 
-export const questSvg = (q: QuestLine, width: number): string => {
+export const questSvg = (q: QuestLine, width: number, lang: Lang = 'en'): string => {
   const W = Math.round(width)
+  const font = FONTS[lang]
   const H = HUD_H
   const titleChars = Math.max(6, Math.floor((W - 41) / 7.6))
   const objectiveChars = Math.max(6, Math.floor((W - 50) / 6.2))
@@ -205,9 +213,9 @@ export const questSvg = (q: QuestLine, width: number): string => {
     `<defs>${GOLD_DEFS}</defs>` +
     plate(2, W - 2, true) +
     `<path d="${diamond(18.5, 12.2, 3.6)}" fill="url(#gold)"/><circle cx="18.5" cy="12.2" r="1.1" fill="#0B0907"/>` +
-    `<text x="27" y="16.6" font-family="${TITLE_FONT}" font-size="13.5" letter-spacing=".3" fill="${q.tone === 'idle' ? '#A88F5E' : GOLD}" filter="url(#shadow)">${esc(clip(q.title, titleChars))}</text>` +
+    `<text x="27" y="16.6" font-family="${font.title}" font-size="13.5" letter-spacing=".3" fill="${q.tone === 'idle' ? '#A88F5E' : GOLD}" filter="url(#shadow)">${esc(clip(q.title, titleChars))}</text>` +
     bullet +
-    `<text x="36" y="33.2" font-family="${BODY_FONT}" font-size="12" fill="${tone}" filter="url(#shadow)">${esc(clip(q.objective, objectiveChars))}</text>` +
+    `<text x="36" y="33.2" font-family="${font.body}" font-size="12" fill="${tone}" filter="url(#shadow)">${esc(clip(q.objective, objectiveChars))}</text>` +
     `</svg>`
   )
 }

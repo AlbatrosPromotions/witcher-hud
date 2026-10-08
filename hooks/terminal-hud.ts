@@ -13,8 +13,9 @@ export type TerminalHud = {
   stamina: number | null
   adrenaline: number
   level: number
+  levelLabel: string
   xpFraction: number
-  usd: number | null
+  crowns: string | null
   title: string
   objective: string
   tone: 'active' | 'done' | 'failed' | 'idle'
@@ -103,10 +104,10 @@ const TerminalHudView: ClientModule<TerminalHud, State> = (p, surface) => {
   const points = clamp(p.adrenaline, 0, 3)
   parts.push(text('  '), text('◆'.repeat(points), { color: ORB }), text('◇'.repeat(3 - points), { color: DIM }))
 
-  const level = `  Lv ${p.level} `
+  const level = `  ${p.levelLabel} ${p.level} `
   const xpCells = 6
   const xpFull = Math.round(xpCells * clamp(p.xpFraction, 0, 1))
-  const crowns = p.usd === null ? '' : `  ⛁ ${p.usd.toFixed(2)}`
+  const crowns = p.crowns === null ? '' : `  ⛁ ${p.crowns}`
 
   const used = 3 + barWidth + pct.length + 5
   let room = columns - used - level.length - xpCells - crowns.length - 2

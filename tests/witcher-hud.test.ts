@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import { clusterSvg, questSvg } from '../hooks/art'
 import type { ClusterArt } from '../hooks/art'
-import { clip, detailOf, levelOf, pastWord, questLine, questTitle, signOf, spinnerWord } from '../hooks/lore'
+import { clip, detailOf, durationRu, levelOf, money, pastWord, questLine, questTitle, signOf, spinnerWord } from '../hooks/lore'
 
 const usage = (input: number, output: number) => ({
   input_tokens: input,
@@ -22,6 +22,7 @@ const band = (isWorking: boolean, bodyColumns = 140) => ({
 })
 
 const art: ClusterArt = {
+  lang: 'en',
   sign: null,
   isWorking: false,
   vitality: 66,
@@ -162,4 +163,58 @@ test('the spinner and the closing line are reworded', async ($, on) => {
   expect(words[0]).toBe('Meditating')
   expect(words[1]).toBe('Creating notes.md')
   expect(words[2]).toBe(pastWord('m1'))
+})
+
+test('Russian follows the Russian edition of the game', () => {
+  expect(levelOf(0, 'ru').title).toBe('Ученик Каэр Морхена')
+  expect(levelOf(10 ** 9, 'ru').title).toBe('Белый Волк')
+  expect(questLine('idle', '', 0, null, 'ru')).toEqual({ title: 'Каэр Морхен', objective: 'Дождитесь нового заказа', tone: 'idle' })
+  expect(questLine('done', 'Почини вход', 2140, null, 'ru').objective).toBe('Задание выполнено · +2,1k опыта')
+  expect(questLine('active', 'x', 0, { key: 'senses', detail: 'router.tsx' }, 'ru').objective).toBe('Ведьмачье чутьё: router.tsx')
+  expect(spinnerWord('thinking', null, 'ru')).toBe('Медитация')
+  expect(spinnerWord('tool-use', 'quen', 'ru')).toBe('Знак Квен')
+  expect([42000, 64000, 120000, 3900000].map(durationRu)).toEqual(['42 с', '1 мин 4 с', '2 мин', '1 ч 5 мин'])
+  expect(money(1.87, 'ru')).toBe('1,87')
+  expect(clusterSvg({ ...art, lang: 'ru' })).toContain('>1,87<')
+})
+
+test('the HUD speaks Russian when its option says so', { options: { language: 'ru' } }, async ($, on) => {
+  mock.clock(on)
+  const sets: { key: string; value: unknown }[] = []
+  on('config.set', (_, e) => {
+    sets.push({ key: e.key, value: e.value })
+    return { value: e.value }
+  })
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('tool.call', () => ({ result: 'ok' as never }))
+  const words: string[] = []
+  on('ui.render', { component: 'Spinner' }, (_, e) => {
+    words.push(e.props.word)
+    return { type: 'Text', props: {}, children: [e.props.word] } as never
+  })
+
+  await $.turn.start({ text: 'почини вход в систему', turnId: 't1' })
+  await $.tool.call({ tool: 'Bash', command: 'npm test' })
+
+  const desktop = await $.ui.mount({ plugin: 'witcher-hud', surface: 'desktop', component: 'AbovePrompt', props: band(true) })
+  const svgs = await desktop.findAll({ type: 'Svg' })
+  expect(String(svgs[0]?.props.alt)).toContain('Жизненная сила 100%')
+  expect(String(svgs[1]?.props.alt)).toBe('Почини вход в систему: Игни: npm test')
+  expect(String(svgs[1]?.props.source)).toContain('Hoefler Text')
+
+  const terminal = await $.ui.mount({ plugin: 'witcher-hud', surface: 'terminal', component: 'AbovePrompt', props: band(true) })
+  expect(await terminal.find({ type: 'Text', text: 'Игни: npm test', in: 'witcher-hud' })).toBeDefined()
+  expect(await terminal.find({ type: 'Text', text: 'Ур 1', in: 'witcher-hud' })).toBeDefined()
+
+  await $.ui.render({ surface: 'terminal', component: 'Spinner', requestId: 'main', props: { word: 'Sauteing', message: null, suffix: '…', mode: 'tool-use' } })
+  expect(words).toEqual(['Знак Игни'])
+  const closing = await $.ui.render({ surface: 'terminal', component: 'TurnDuration', requestId: 'm1', props: { word: 'Baked', durationMs: 64000 } })
+  expect(JSON.stringify(closing)).toContain(`${pastWord('m1', 'ru')} 1 мин 4 с`)
+
+  const run = (args: string) =>
+    $.command.run({ command: 'hud', args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
+  const stats = await run('stats')
+  expect(JSON.stringify(stats)).toContain('Жизненная сила')
+  await run('lang en')
+  expect(sets).toEqual([{ key: 'witcher-hud.language', value: 'en' }])
 })

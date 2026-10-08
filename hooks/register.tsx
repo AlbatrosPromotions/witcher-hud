@@ -9,11 +9,15 @@ import {
   LOW_VITALITY,
   SIGNS,
   STREAK_PER_POINT,
+  WORDS,
   adrenalineOf,
   detailOf,
+  durationRu,
   fmt,
   isSignKey,
+  langOf,
   levelOf,
+  money,
   pastWord,
   questLine,
   questTitle,
@@ -21,6 +25,7 @@ import {
   spinnerWord,
   xpOf,
 } from './lore'
+import type { Lang } from './lore'
 import type { TerminalHud } from './terminal-hud'
 
 const EMPTY: Totals = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, calls: 0 }
@@ -48,42 +53,52 @@ const questNow = (q: unknown): Quest =>
 
 const vitalityOf = (m: Measure) => (m.percent === undefined ? undefined : 100 - m.percent)
 
-const sheet = async ($: EngineInterface) => {
+const sheet = async ($: EngineInterface, lang: Lang) => {
+  const w = WORDS[lang].sheet
   const t = await read($, totals)
   const m = await read($, measure)
   const a = await read($, adrenaline)
-  const lv = levelOf(xpOf(t))
+  const lv = levelOf(xpOf(t), lang)
   const v = vitalityOf(m)
-  const context = m.tokens !== undefined && m.window ? ` (context ${fmt(m.tokens)} of ${fmt(m.window)})` : ''
-  return [
-    `${lv.title} · Level ${lv.level}`,
-    `Vitality    ${v === undefined ? '—' : `${v}%`}${context}`,
-    `Stamina     ${m.stamina === undefined ? '—' : `${Math.round(m.stamina)}% of the 5-hour limit left`}`,
-    `Adrenaline  ${adrenalineOf(a.streak)}/3 (${a.streak} clean casts in a row)`,
-    `Experience  ${fmt(lv.into)} / ${fmt(lv.need)} to level ${lv.level + 1}`,
-    `Crowns      ${m.usd === undefined ? '—' : `$${m.usd.toFixed(2)}`}`,
-    `Tokens      ↑${fmt(t.input + t.cacheWrite)} ↓${fmt(t.output)} · cache ${fmt(t.cacheRead)} · ${t.calls} contracts`,
-  ].join('\n')
+  const n = (x: number) => fmt(x, lang)
+  const context = m.tokens !== undefined && m.window ? ` (${w.context(n(m.tokens), n(m.window))})` : ''
+  const rows: [string, string][] = [
+    [w.vitality, `${v === undefined ? '—' : `${v}%`}${context}`],
+    [w.stamina, m.stamina === undefined ? '—' : w.staminaLeft(Math.round(m.stamina))],
+    [w.adrenaline, `${adrenalineOf(a.streak)}/3 (${w.streak(a.streak)})`],
+    [w.experience, w.toLevel(n(lv.into), n(lv.need), lv.level + 1)],
+    [w.crowns, m.usd === undefined ? '—' : `$${money(m.usd, lang)}`],
+    [w.tokens, `↑${n(t.input + t.cacheWrite)} ↓${n(t.output)} · ${w.cache} ${n(t.cacheRead)} · ${w.contracts(t.calls)}`],
+  ]
+  const pad = Math.max(...rows.map(([label]) => label.length)) + 2
+  return [`${lv.title} · ${w.level} ${lv.level}`, ...rows.map(([label, value]) => label.padEnd(pad) + value)].join('\n')
 }
 
-export const register: Register = on => {
+export const register: Register = (on, options) => {
+  const lang = langOf(options.language)
+  const words = WORDS[lang]
+
   on('session.start', async ($, e, next) => {
     $.ui.status(undefined)
     // A reload drops the timers that end these, so they start over here.
     await update($, ghost, () => null)
     await update($, levelUp, () => null)
-    await $.command.register({
-      name: 'hud',
-      description: 'Sheathe or draw the witcher HUD; /hud stats shows the character sheet',
-      argumentHint: '[stats]',
-    })
+    await $.command.register({ name: 'hud', description: words.command, argumentHint: '[stats | lang en|ru]' })
     return next(e)
   })
 
   on('command.run', { command: 'hud' }, async ($, e) => {
-    if (e.args.trim() === 'stats') return { text: await sheet($) }
+    const args = e.args.trim()
+    if (args === 'stats') return { text: await sheet($, lang) }
+    const chosen = /^lang(?:uage)?\s+(en|ru)$/i.exec(args)?.[1]
+    if (chosen !== undefined) {
+      const to = langOf(chosen.toLowerCase())
+      // Written to the plugin's options in settings, which reloads the HUD in that language.
+      const r = await $.config.set({ key: `${$.plugin.name}.language`, value: to })
+      return { text: r.deny ?? WORDS[to].language }
+    }
     await update($, isHidden, v => !v)
-    return { text: (await read($, isHidden)) ? 'HUD sheathed. /hud draws it again.' : 'HUD drawn.' }
+    return { text: (await read($, isHidden)) ? words.sheathed : words.drawn }
   })
 
   // A prompt is a new quest, named after its first line.
@@ -119,9 +134,9 @@ export const register: Register = on => {
         cacheWrite: t.cacheWrite + u.cache_creation_input_tokens,
         calls: t.calls + 1,
       }))
-      const after = levelOf(xpOf(await read($, totals)))
+      const after = levelOf(xpOf(await read($, totals)), lang)
       if (after.level > before) {
-        $.ui.toast(`Level up! Ability point gained · Level ${after.level}: ${after.title}`)
+        $.ui.toast(words.levelUp(after.level, after.title))
         await update($, levelUp, () => after.level)
         $.clock.after(LEVEL_UP_MS, () => void update($, levelUp, l => (l === after.level ? null : l)))
       }
@@ -161,12 +176,8 @@ export const register: Register = on => {
       await update($, ghost, () => ({ from: was, to: v, id }))
       $.clock.after(GHOST_MS, () => void update($, ghost, g => (g?.id === id ? null : g)))
     }
-    if (v !== undefined && v <= LOW_VITALITY && (was ?? 100) > LOW_VITALITY) {
-      $.ui.toast(`Vitality low: ${v}%. Meditate to recover: /compact`)
-    }
-    if (v !== undefined && was !== undefined && v - was >= 25) {
-      $.ui.toast(`Meditation complete. Vitality restored to ${v}%`)
-    }
+    if (v !== undefined && v <= LOW_VITALITY && (was ?? 100) > LOW_VITALITY) $.ui.toast(words.lowVitality(v))
+    if (v !== undefined && was !== undefined && v - was >= 25) $.ui.toast(words.meditated(v))
     return next(e)
   })
 
@@ -180,12 +191,12 @@ export const register: Register = on => {
     const q = questNow(await read($, quest))
     const a = await read($, adrenaline)
     const leveledTo = await read($, levelUp)
-    const lv = levelOf(xpOf(t))
+    const lv = levelOf(xpOf(t), lang)
     const vitality = vitalityOf(m) ?? 100
     const ghostFrom = g !== null && g.to === vitality ? g.from : null
     // The sign shows while Claude works; between quests the wolf rests on the medallion.
     const shown = e.props.isWorking ? (s?.key ?? null) : null
-    const line = questLine(q.status, q.title, q.xpGained, s)
+    const line = questLine(q.status, q.title, q.xpGained, s, lang)
     const points = adrenalineOf(a.streak)
     const stamina = m.stamina ?? null
     const usd = m.usd ?? null
@@ -205,8 +216,9 @@ export const register: Register = on => {
         stamina,
         adrenaline: points,
         level: lv.level,
+        levelLabel: words.levelShort,
         xpFraction,
-        usd,
+        crowns: usd === null ? null : money(usd, lang),
         title: line.title,
         objective: line.objective,
         tone: line.tone,
@@ -217,6 +229,7 @@ export const register: Register = on => {
     const { Box, Svg } = $.ui.resolve(e)
     const questW = Math.min(380, Math.floor(e.props.bodyColumns * DESKTOP_CELL_PX - CLUSTER_W - 24))
     const cluster = clusterSvg({
+      lang,
       sign: shown,
       isWorking: e.props.isWorking,
       vitality,
@@ -229,11 +242,11 @@ export const register: Register = on => {
       usd,
     })
     const alt = [
-      `Vitality ${vitality}%`,
-      stamina === null ? '' : `stamina ${Math.round(stamina)}%`,
-      `adrenaline ${points} of 3`,
-      `level ${lv.level}`,
-      usd === null ? '' : `${usd.toFixed(2)} crowns`,
+      `${words.alt.vitality} ${vitality}%`,
+      stamina === null ? '' : `${words.alt.stamina} ${Math.round(stamina)}%`,
+      words.alt.adrenaline(points),
+      `${words.alt.level} ${lv.level}`,
+      usd === null ? '' : `${words.alt.crowns} ${money(usd, lang)}`,
     ]
       .filter(Boolean)
       .join(', ')
@@ -241,7 +254,7 @@ export const register: Register = on => {
       <Box flexDirection="row" justifyContent="space-between" alignItems="center">
         <Svg source={cluster} alt={alt} width={CLUSTER_W} height={HUD_H} />
         {questW >= 220 && (
-          <Svg source={questSvg(line, questW)} alt={`${line.title}: ${line.objective}`} width={questW} height={HUD_H} />
+          <Svg source={questSvg(line, questW, lang)} alt={`${line.title}: ${line.objective}`} width={questW} height={HUD_H} />
         )}
       </Box>
     )
@@ -251,10 +264,13 @@ export const register: Register = on => {
   on('ui.render', { component: 'Spinner' }, async ($, e, next) => {
     const s = signNow(await read($, sign))
     if (e.surface !== 'terminal' && e.props.word !== 'Working') return next(e)
-    return next({ ...e, props: { ...e.props, word: spinnerWord(e.props.mode, s?.key ?? null) } })
+    return next({ ...e, props: { ...e.props, word: spinnerWord(e.props.mode, s?.key ?? null, lang) } })
   })
 
-  on('ui.render', { component: 'TurnDuration' }, ($, e, next) =>
-    next({ ...e, props: { ...e.props, word: pastWord(e.requestId) } }),
-  )
+  // The line that closes a turn: the engine's "<word> for 3s" in English, a line of our own in Russian.
+  on('ui.render', { component: 'TurnDuration' }, ($, e, next) => {
+    if (lang === 'en') return next({ ...e, props: { ...e.props, word: pastWord(e.requestId, lang) } })
+    const { Text } = $.ui.resolve(e)
+    return <Text dimColor>{`✻ ${pastWord(e.requestId, lang)} ${durationRu(e.props.durationMs)}`}</Text>
+  })
 }

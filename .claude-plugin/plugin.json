@@ -1,9 +1,29 @@
 {
   "name": "witcher-hud",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "A compact Witcher 3 style HUD for Claude Code: a medallion that casts a sign for each tool, vitality for the context left, stamina for the rate limit, adrenaline for clean tool streaks, XP and levels for tokens, crowns for cost, and a quest tracker for the prompt at hand",
-  "author": { "name": "AlbatrosPromotions" },
+  "author": {
+    "name": "AlbatrosPromotions"
+  },
   "repository": "https://github.com/AlbatrosPromotions/witcher-hud",
-  "keywords": ["hud", "tokens", "usage", "witcher", "game"],
-  "types": "./types/index.d.ts"
+  "keywords": [
+    "hud",
+    "tokens",
+    "usage",
+    "witcher",
+    "game"
+  ],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "language": {
+      "type": "string",
+      "title": "Language",
+      "description": "The HUD's language: en for English, ru for Russian (Русский)",
+      "options": [
+        "en",
+        "ru"
+      ],
+      "default": "en"
+    }
+  }
 }

@@ -33,10 +33,18 @@ Toasts announce each level up, warn when vitality drops below 20% (meditate with
 
 Levels: Kaer Morhen Trainee, Survivor of the Grasses, Novice Witcher, Monster Slayer, Contract Hunter, Silver Sword, Wolf School Master, White Wolf.
 
+## Language
+
+The HUD speaks English or Russian. The Russian follows the game's own Russian edition: Игни, Квен, Ведьмачье чутьё, «Задание выполнено», кроны.
+
+- `/hud lang ru` or `/hud lang en` switches it, and it stays switched in every session.
+- It is also the plugin's `language` option, under `/config` or `pluginConfigs` in `~/.claude/settings.json`.
+
 ## Commands
 
 - `/hud` sheathes or draws the HUD.
 - `/hud stats` shows the character sheet: every number behind the bars.
+- `/hud lang en|ru` picks the language.
 
 Token counts start when the plugin loads; cost, context and stamina cover the whole session.
 
