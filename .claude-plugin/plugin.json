@@ -1,0 +1,9 @@
+{
+  "name": "witcher-hud",
+  "version": "1.0.0",
+  "description": "Witcher 3 style HUD above the Claude Code prompt: context as vitality, rate limit as stamina, cache hits as adrenaline, tokens as XP, cost as crowns",
+  "author": { "name": "AlbatrosPromotions" },
+  "repository": "https://github.com/AlbatrosPromotions/witcher-hud",
+  "keywords": ["hud", "tokens", "usage", "witcher", "game"],
+  "types": "./types/index.d.ts"
+}

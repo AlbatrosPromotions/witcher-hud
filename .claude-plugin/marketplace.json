@@ -1,0 +1,14 @@
+{
+  "name": "witcher-hud",
+  "description": "Witcher 3 style HUD for Claude Code",
+  "owner": {
+    "name": "AlbatrosPromotions"
+  },
+  "plugins": [
+    {
+      "name": "witcher-hud",
+      "source": "./",
+      "description": "Witcher 3 style HUD above the Claude Code prompt: token usage, context, rate limit and cost"
+    }
+  ]
+}
