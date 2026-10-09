@@ -8,7 +8,7 @@
     {
       "name": "witcher-hud",
       "source": "./",
-      "description": "Witcher 3 style HUD above the Claude Code prompt: token usage, context, rate limit and cost"
+      "description": "A compact Witcher 3 style HUD for Claude Code: a medallion that casts a sign for each tool, vitality for the context left, stamina for the rate limit, adrenaline for clean tool streaks, XP and levels for tokens, crowns for cost, and a quest tracker for the prompt at hand"
     }
   ]
 }
