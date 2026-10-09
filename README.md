@@ -8,7 +8,7 @@ In the desktop app it is drawn: a medallion that casts the sign of the tool at w
  ▲ ▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂ 66%  ◆◆◇  Lv 5 ━━────  ⛁ 1.87  Fix the login redirect ◆ Igni: npm test
 ```
 
-It speaks English or Russian. Current version: 2.1.0.
+It speaks English or Russian. Current version: 2.1.1.
 
 ## Install
 
@@ -95,6 +95,7 @@ Claude Code writes `.claude-plugin/types/` and `tsconfig.json` each time it load
 
 ## Versions
 
+- **2.1.1** The README and the marketplace listing brought up to date; the HUD itself is unchanged.
 - **2.1.0** Russian, after the game's Russian edition, and the `language` option with `/hud lang`.
 - **2.0.0** The compact HUD: one row, a drawn medallion and sign glyphs, the quest tracker, adrenaline from clean tool streaks, the themed spinner and closing line, and `/hud stats`. Signs were remapped: reading is now Witcher Senses, the web Axii, a subagent Aard.
 - **1.0.0** The first HUD: a framed panel of bars, with adrenaline from prompt cache hits.
