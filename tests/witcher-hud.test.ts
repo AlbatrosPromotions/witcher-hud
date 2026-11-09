@@ -1,7 +1,8 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { clusterSvg, questSvg } from '../hooks/art'
-import type { ClusterArt } from '../hooks/art'
+import { characterSvg, questSvg } from '../hooks/art'
+import type { CharacterArt } from '../hooks/art'
+import { layout } from '../hooks/layout'
 import { clip, detailOf, durationRu, levelOf, money, pastWord, questLine, questTitle, signOf, spinnerWord } from '../hooks/lore'
 
 const usage = (input: number, output: number) => ({
@@ -21,10 +22,13 @@ const band = (isWorking: boolean, bodyColumns = 140) => ({
   view: {},
 })
 
-const art: ClusterArt = {
-  lang: 'en',
+const L = layout({ width: 800, hasStamina: true, crowns: '1.87' })
+
+const art: CharacterArt = {
+  theme: 'auto',
   sign: null,
   isWorking: false,
+  isCasting: false,
   vitality: 66,
   ghostFrom: null,
   stamina: 78,
@@ -32,7 +36,7 @@ const art: ClusterArt = {
   level: 5,
   xpFraction: 0.3,
   isLevelUp: false,
-  usd: 1.87,
+  tips: { vitality: 'Vitality 66%', stamina: 'Stamina', adrenaline: 'Adrenaline', level: 'Level' },
 }
 
 test('levels double and the titles climb', () => {
@@ -70,12 +74,35 @@ test('the spinner and the turn line speak the trade', () => {
   expect(pastWord('turn-1')).toBe(pastWord('turn-1'))
 })
 
-test('the desktop art animates what moves', () => {
-  expect(clusterSvg(art)).not.toContain('animateTransform')
-  expect(clusterSvg({ ...art, isWorking: true })).toContain('animateTransform')
-  expect(clusterSvg({ ...art, vitality: 41, ghostFrom: 66 })).toContain('attributeName="width"')
-  expect(clusterSvg({ ...art, vitality: 12 })).toContain('#FF8A73')
-  expect(questSvg(questLine('active', 'a <b> & "c"', 0, null), 300)).toContain('a &lt;b&gt; &amp; &quot;c&quot;')
+test('the desktop art animates what moves, and only once a sign is cast', () => {
+  expect(characterSvg(L, art)).not.toContain('class="shake"')
+  expect(characterSvg(L, art)).not.toContain('class="aura"')
+  expect(characterSvg(L, { ...art, isWorking: true })).toContain('class="aura"')
+  expect(characterSvg(L, { ...art, isWorking: true, isCasting: true })).toContain('class="shake"')
+  expect(characterSvg(L, { ...art, vitality: 41, ghostFrom: 66 })).toContain('class="ghost"')
+  expect(characterSvg(L, { ...art, vitality: 12 })).toContain('class="low"')
+  expect(characterSvg(L, { ...art, vitality: 12 })).toContain('fill:var(--low)')
+  // A reduced-motion setting stills it all.
+  expect(characterSvg(L, art)).toContain('@media (prefers-reduced-motion:reduce){*{animation:none!important}')
+  const quest = questSvg(L, { theme: 'auto', line: questLine('active', 'a <b> & "c"', 0, null), cast: null, crowns: null })
+  expect(quest).toContain('a &lt;b&gt; &amp; &quot;c&quot;')
+})
+
+test('the art follows the app, or keeps the theme it is given', () => {
+  const auto = characterSvg(L, art)
+  expect(auto).toContain('@media (prefers-color-scheme:light){svg{--plate-top:#FBF6EA')
+  const light = characterSvg(L, { ...art, theme: 'light' })
+  expect(light).toContain('svg{--plate-top:#FBF6EA')
+  expect(light).not.toContain('prefers-color-scheme')
+  expect(characterSvg(L, { ...art, theme: 'dark' })).not.toContain('#FBF6EA')
+  // The title face is embedded, so the HUD reads the same on every machine.
+  expect(auto).toContain("@font-face{font-family:'WHud Title';src:url(data:font/woff2;base64,")
+  // Each bar and mark answers the pointer with its numbers.
+  expect(auto).toContain('<title>Vitality 66%</title>')
+  const cast = questSvg(L, { theme: 'auto', line: questLine('active', 'Fix it', 0, { key: 'igni', detail: 'npm test' }), cast: { key: 'igni', name: 'Igni', detail: 'npm test' }, crowns: '1.87' })
+  expect(cast).toContain('style="fill:var(--sign-igni)"')
+  expect(cast).toContain('>IGNI</text>')
+  expect(cast).toContain("font-family=\"'SF Mono', Menlo, ui-monospace, monospace\"")
 })
 
 test('a quest runs through the HUD on both surfaces', async ($, on) => {
@@ -115,10 +142,15 @@ test('a quest runs through the HUD on both surfaces', async ($, on) => {
 
   const desktop = await $.ui.mount({ plugin: 'witcher-hud', surface: 'desktop', component: 'AbovePrompt', props: band(true) })
   const svgs = await desktop.findAll({ type: 'Svg' })
-  expect(svgs.length).toBe(2)
+  // The character, the quest, and the sheet the pointer on the character shows in the quest's place.
+  expect(svgs.length).toBe(3)
   expect(String(svgs[0]?.props.alt)).toContain('adrenaline 1 of 3')
+  expect(svgs[0]?.props.isInteractive).toBe(true)
   expect(String(svgs[1]?.props.alt)).toBe('Fix the login redirect bug: Igni: npm test -- auth')
-  expect(String(svgs[0]?.props.source)).toContain('animateTransform')
+  expect(String(svgs[2]?.props.alt)).toContain('Survivor of the Grasses · Level 2')
+  // The sign was just cast: the medallion shakes once.
+  expect(String(svgs[0]?.props.source)).toContain('class="shake"')
+  expect(Number(svgs[0]?.props.width) + Number(svgs[1]?.props.width)).toBe(Number(svgs[2]?.props.width) + Number(svgs[0]?.props.width))
 
   const terminal = await $.ui.mount({ plugin: 'witcher-hud', surface: 'terminal', component: 'AbovePrompt', props: band(true) })
   expect(await terminal.find({ type: 'Text', text: 'Igni: npm test -- auth', in: 'witcher-hud' })).toBeDefined()
@@ -134,27 +166,31 @@ test('a quest runs through the HUD on both surfaces', async ($, on) => {
 
   await $.session.measure({ context: { window: 200000, tokens: 150000, percent: 75 }, rateLimits: [], cost: { usd: 0.9 }, changed: ['context'] })
   const drained = await $.ui.mount({ plugin: 'witcher-hud', surface: 'desktop', component: 'AbovePrompt', props: band(true) })
-  expect(String((await drained.findAll({ type: 'Svg' }))[0]?.props.source)).toContain('attributeName="width"')
+  expect(String((await drained.findAll({ type: 'Svg' }))[0]?.props.source)).toContain('class="ghost"')
   await clock.advance(2000)
   const settled = await $.ui.mount({ plugin: 'witcher-hud', surface: 'desktop', component: 'AbovePrompt', props: band(true) })
-  expect(String((await settled.findAll({ type: 'Svg' }))[0]?.props.source)).not.toContain('attributeName="width"')
+  const settledSource = String((await settled.findAll({ type: 'Svg' }))[0]?.props.source)
+  expect(settledSource).not.toContain('class="ghost"')
+  // Long after the cast, the medallion only breathes.
+  expect(settledSource).not.toContain('class="shake"')
+  expect(settledSource).toContain('class="aura"')
 
   await $.turn.complete({ answer: 'Done.', durationMs: 4000, isAborted: false, turnId: 't1', reason: 'answer' })
   const done = await $.ui.mount({ plugin: 'witcher-hud', surface: 'desktop', component: 'AbovePrompt', props: band(false) })
   const doneSvgs = await done.findAll({ type: 'Svg' })
   expect(String(doneSvgs[1]?.props.alt)).toBe('Fix the login redirect bug: Quest completed · +5.3k XP')
-  expect(String(doneSvgs[0]?.props.source)).not.toContain('animateTransform')
+  expect(String(doneSvgs[0]?.props.source)).not.toContain('class="aura"')
 })
 
 test('the spinner and the closing line are reworded', async ($, on) => {
   const words: string[] = []
   on('ui.render', { component: 'Spinner' }, (_, e) => {
     words.push(e.props.word)
-    return { type: 'Text', props: { children: e.props.word } } as never
+    return { type: 'Text', props: {}, children: [e.props.word] } as never
   })
   on('ui.render', { component: 'TurnDuration' }, (_, e) => {
     words.push(e.props.word)
-    return { type: 'Text', props: { children: e.props.word } } as never
+    return { type: 'Text', props: {}, children: [e.props.word] } as never
   })
   const spinner = { word: 'Sauteing', message: null, suffix: '…', mode: 'thinking' as const }
   await $.ui.render({ surface: 'terminal', component: 'Spinner', requestId: 'main', props: spinner })
@@ -175,7 +211,7 @@ test('Russian follows the Russian edition of the game', () => {
   expect(spinnerWord('tool-use', 'quen', 'ru')).toBe('Знак Квен')
   expect([42000, 64000, 120000, 3900000].map(durationRu)).toEqual(['42 с', '1 мин 4 с', '2 мин', '1 ч 5 мин'])
   expect(money(1.87, 'ru')).toBe('1,87')
-  expect(clusterSvg({ ...art, lang: 'ru' })).toContain('>1,87<')
+  expect(questSvg(layout({ width: 800, hasStamina: true, crowns: '1,87' }), { theme: 'auto', line: questLine('idle', '', 0, null, 'ru'), cast: null, crowns: money(1.87, 'ru') })).toContain('>1,87<')
 })
 
 test('the HUD speaks Russian when its option says so', { options: { language: 'ru' } }, async ($, on) => {
@@ -200,7 +236,9 @@ test('the HUD speaks Russian when its option says so', { options: { language: 'r
   const svgs = await desktop.findAll({ type: 'Svg' })
   expect(String(svgs[0]?.props.alt)).toContain('Жизненная сила 100%')
   expect(String(svgs[1]?.props.alt)).toBe('Почини вход в систему: Игни: npm test')
-  expect(String(svgs[1]?.props.source)).toContain('Hoefler Text')
+  // The embedded title face carries Cyrillic.
+  expect(String(svgs[1]?.props.source)).toContain("font-family=\"'WHud Title'")
+  expect(String(svgs[1]?.props.source)).toContain('>ИГНИ</text>')
 
   const terminal = await $.ui.mount({ plugin: 'witcher-hud', surface: 'terminal', component: 'AbovePrompt', props: band(true) })
   expect(await terminal.find({ type: 'Text', text: 'Игни: npm test', in: 'witcher-hud' })).toBeDefined()
@@ -216,5 +254,10 @@ test('the HUD speaks Russian when its option says so', { options: { language: 'r
   const stats = await run('stats')
   expect(JSON.stringify(stats)).toContain('Жизненная сила')
   await run('lang en')
-  expect(sets).toEqual([{ key: 'witcher-hud.language', value: 'en' }])
+  const themed = await run('theme light')
+  expect(JSON.stringify(themed)).toContain('Тема HUD: светлая, пергамент.')
+  expect(sets).toEqual([
+    { key: 'witcher-hud.language', value: 'en' },
+    { key: 'witcher-hud.theme', value: 'light' },
+  ])
 })

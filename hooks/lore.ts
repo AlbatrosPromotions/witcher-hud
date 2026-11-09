@@ -69,6 +69,7 @@ type Words = {
   sheathed: string
   drawn: string
   language: string
+  theme: Record<'auto' | 'dark' | 'light', string>
   command: string
   levelShort: string
   alt: { vitality: string; stamina: string; adrenaline: (n: number) => string; level: string; crowns: string }
@@ -87,6 +88,8 @@ type Words = {
     cache: string
     contracts: (n: number) => string
   }
+  // The character sheet the desktop shows while the pointer is on the character.
+  hover: { title: (title: string, level: number) => string }
 }
 
 // The Russian follows the game's own Russian edition: Игни, Квен, ведьмачье чутьё, кроны.
@@ -131,7 +134,12 @@ export const WORDS: Record<Lang, Words> = {
     sheathed: 'HUD sheathed. /hud draws it again.',
     drawn: 'HUD drawn.',
     language: 'HUD language: English.',
-    command: 'Sheathe or draw the witcher HUD · /hud stats: character sheet · /hud lang en|ru',
+    theme: {
+      auto: 'HUD theme: auto, after the app’s appearance.',
+      dark: 'HUD theme: dark.',
+      light: 'HUD theme: light parchment.',
+    },
+    command: 'Sheathe or draw the witcher HUD · /hud stats: character sheet · /hud lang en|ru · /hud theme auto|dark|light',
     levelShort: 'Lv',
     alt: {
       vitality: 'Vitality',
@@ -155,6 +163,7 @@ export const WORDS: Record<Lang, Words> = {
       cache: 'cache',
       contracts: n => `${n} contracts`,
     },
+    hover: { title: (title, level) => `${title} · Level ${level}` },
   },
   ru: {
     sign: {
@@ -196,7 +205,12 @@ export const WORDS: Record<Lang, Words> = {
     sheathed: 'HUD убран в ножны. /hud вернёт его.',
     drawn: 'HUD снова с вами.',
     language: 'Язык HUD: русский.',
-    command: 'Убрать или вернуть HUD ведьмака · /hud stats: лист персонажа · /hud lang en|ru',
+    theme: {
+      auto: 'Тема HUD: авто, как у приложения.',
+      dark: 'Тема HUD: тёмная.',
+      light: 'Тема HUD: светлая, пергамент.',
+    },
+    command: 'Убрать или вернуть HUD ведьмака · /hud stats: лист персонажа · /hud lang en|ru · /hud theme auto|dark|light',
     levelShort: 'Ур',
     alt: {
       vitality: 'Жизненная сила',
@@ -220,6 +234,7 @@ export const WORDS: Record<Lang, Words> = {
       cache: 'кэш',
       contracts: n => `заказов: ${n}`,
     },
+    hover: { title: (title, level) => `${title} · Уровень ${level}` },
   },
 }
 

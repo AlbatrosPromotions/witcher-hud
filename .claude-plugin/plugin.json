@@ -1,7 +1,7 @@
 {
   "name": "witcher-hud",
-  "version": "2.1.1",
-  "description": "A compact Witcher 3 style HUD for Claude Code: a medallion that casts a sign for each tool, vitality for the context left, stamina for the rate limit, adrenaline for clean tool streaks, XP and levels for tokens, crowns for cost, and a quest tracker for the prompt at hand",
+  "version": "3.0.0",
+  "description": "A Witcher 3 style HUD for Claude Code: a medallion that casts a sign for each tool, vitality for the context left, stamina for the rate limit, adrenaline for clean tool streaks, XP and levels for tokens, crowns for cost, a quest tracker for the prompt at hand, and a character sheet on hover; dark or light parchment, after the app",
   "author": {
     "name": "AlbatrosPromotions"
   },
@@ -24,6 +24,17 @@
         "ru"
       ],
       "default": "en"
+    },
+    "theme": {
+      "type": "string",
+      "title": "Theme",
+      "description": "The desktop HUD's look: auto follows the app's light or dark appearance, dark keeps the dark plate, light the parchment",
+      "options": [
+        "auto",
+        "dark",
+        "light"
+      ],
+      "default": "auto"
     }
   }
 }

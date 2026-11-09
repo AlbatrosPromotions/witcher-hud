@@ -21,7 +21,8 @@ export type Measure = {
 // The stretch of the vitality bar just lost, drawn pale while it drains away.
 export type Ghost = { from: number; to: number; id: number }
 
-export type SignState = { key: SignKey; detail: string }
+// `at`: when the sign was cast, so the medallion shakes once for it.
+export type SignState = { key: SignKey; detail: string; at?: number }
 
 export type Quest = { title: string; status: QuestStatus; xpAtStart: number; xpGained: number }
 
