@@ -128,6 +128,14 @@ type Words = {
     muted: (name: string) => string
     unmuted: (name: string) => string
     usage: string
+    // /hud sound file: a file of one's own for a sound.
+    fileSet: (sound: string, file: string) => string
+    fileReset: (sound: string) => string
+    fileMissing: (path: string) => string
+    fileType: string
+    fileTooBig: string
+    filesNone: string
+    fileHelp: (sounds: string) => string
   }
   journal: {
     title: string
@@ -260,7 +268,14 @@ export const WORDS: Record<Lang, Words> = {
       state: isOn => (isOn ? 'on' : 'off'),
       muted: name => `${name}: sound off.`,
       unmuted: name => `${name}: sound on.`,
-      usage: `/hud sound opens the sound settings. /hud sound on|quiet|off sets the volume; /hud sound <${SOUND_KEYS.join('|')}> on|off turns one kind on or off.`,
+      usage: `/hud sound opens the sound settings. /hud sound on|quiet|off sets the volume; /hud sound <${SOUND_KEYS.join('|')}> on|off turns one kind on or off; /hud sound file plays a file of yours instead.`,
+      fileSet: (sound, file) => `${sound} now plays ${file}.`,
+      fileReset: sound => `${sound} plays the HUD’s own clip again.`,
+      fileMissing: path => `No file at ${path}.`,
+      fileType: 'Pick an MP3, WAV, M4A or AIFF file.',
+      fileTooBig: 'That file is over 4 MB: pick a shorter clip.',
+      filesNone: 'Every sound plays the HUD’s own clip.',
+      fileHelp: sounds => `/hud sound file <sound> <path> plays a file of yours for that sound; /hud sound file <sound> reset goes back to the HUD’s. Sounds: ${sounds}.`,
     },
     journal: {
       title: 'Witcher’s Journal',
@@ -390,7 +405,14 @@ export const WORDS: Record<Lang, Words> = {
       state: isOn => (isOn ? 'вкл.' : 'выкл.'),
       muted: name => `${name}: звук выключен.`,
       unmuted: name => `${name}: звук включён.`,
-      usage: `/hud sound открывает настройки звука. /hud sound on|quiet|off задаёт громкость; /hud sound <${SOUND_KEYS.join('|')}> on|off включает или выключает один вид.`,
+      usage: `/hud sound открывает настройки звука. /hud sound on|quiet|off задаёт громкость; /hud sound <${SOUND_KEYS.join('|')}> on|off включает или выключает один вид; /hud sound file ставит ваш собственный файл.`,
+      fileSet: (sound, file) => `${sound}: теперь звучит ${file}.`,
+      fileReset: sound => `${sound}: снова звучит клип HUD.`,
+      fileMissing: path => `Файл не найден: ${path}.`,
+      fileType: 'Выберите файл MP3, WAV, M4A или AIFF.',
+      fileTooBig: 'Файл больше 4 МБ: выберите клип короче.',
+      filesNone: 'Все звуки — клипы HUD.',
+      fileHelp: sounds => `/hud sound file <звук> <путь> ставит ваш файл на этот звук; /hud sound file <звук> reset возвращает клип HUD. Звуки: ${sounds}.`,
     },
     journal: {
       title: 'Журнал ведьмака',

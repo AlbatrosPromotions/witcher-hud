@@ -28,7 +28,7 @@ const band = (isWorking: boolean) => ({
 
 // The engine beneath the plugin: a clock, a store kept in a map the test reads, a session on show
 // on the desktop, a player that records each clip, and tools that fail when `failing` matches.
-const world = (on: On, o: { store?: Record<string, unknown>; failing?: RegExp; id?: () => string; muted?: string[] | null; own?: string[] } = {}) => {
+const world = (on: On, o: { store?: Record<string, unknown>; failing?: RegExp; id?: () => string; muted?: string[] | null; own?: string[]; files?: Record<string, { size: number; base64: string }> } = {}) => {
   const clock = mock.clock(on, { now: T0 })
   // Every kind of sound turned on, as a person may have: `muted: null` leaves the HUD's default.
   const sound = o.muted === null ? {} : { 'sound:v1:muted': o.muted ?? [] }
@@ -50,10 +50,23 @@ const world = (on: On, o: { store?: Record<string, unknown>; failing?: RegExp; i
   })
   on('ui.status', () => ({ value: undefined }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
+  // A clip given as bytes is recorded as `mime;base64`.
   const sounds: { asset: string; gain: number | undefined }[] = []
   on('audio.play', (_, e) => {
-    sounds.push({ asset: (e.clip as { asset: string }).asset, gain: e.gain })
+    const clip = e.clip as { asset?: string; base64?: string; mime?: string }
+    sounds.push({ asset: clip.asset ?? `${clip.mime};${clip.base64}`, gain: e.gain })
     return { value: undefined }
+  })
+  // The files on the computer are the ones the test names, by full path, and a home folder.
+  const files = new Map(Object.entries(o.files ?? {}))
+  on('env.get', (_, e) => ({ value: e.name === 'HOME' ? '/Users/geralt' : undefined }))
+  on('fs.stat', (_, e) => {
+    const file = files.get(e.path)
+    return file === undefined ? { deny: `ENOENT: ${e.path}` } : { value: { kind: 'file' as const, size: file.size, mtimeMs: 0, isLink: false, realPath: e.path } }
+  })
+  on('fs.read', (_, e) => {
+    const file = files.get(e.path)
+    return file === undefined ? { deny: `ENOENT: ${e.path}` } : { value: { base64: file.base64 } }
   })
   // The folder of one's own clips holds what the test names, and nothing on the machine running it.
   on('fs.list', (_, e) => ({
@@ -75,7 +88,7 @@ const world = (on: On, o: { store?: Record<string, unknown>; failing?: RegExp; i
   on('turn.step', async function* (_, e) {
     return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn', usage: usage(...(spend.shift() ?? [800, 200])) }
   })
-  return { clock, store, toasts, sounds, spend }
+  return { clock, store, toasts, sounds, spend, files }
 }
 
 const quest = async ($: Engine, text: string, turnId: string, steps = 1) => {
@@ -213,6 +226,62 @@ test("a clip of one's own in sounds/local plays in place of the HUD's", async ($
   await complete($, 't1')
   await w.clock.advance(6000)
   expect(w.sounds.map(s => s.asset)).toEqual(['sounds/local/quest-done.mp3'])
+})
+
+const hud = async ($: Engine, args: string) =>
+  String(
+    ((await $.command.run({ command: 'hud', args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })) as { text?: string }).text,
+  )
+
+test('a file chosen with /hud sound file plays for its sound in every session, until reset', async ($, on) => {
+  const w = world(on, { muted: null, files: { '/Users/geralt/Music/done.mp3': { size: 60_000, base64: 'SUQz' } } })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  expect(await hud($, 'sound file')).toContain('Every sound plays the HUD’s own clip.')
+
+  // Chosen by a path from the home folder: kept by its full path, and played once to hear it.
+  expect(await hud($, 'sound file quest-done ~/Music/done.mp3')).toBe('quest-done now plays done.mp3.')
+  expect(w.store.get('sound:v1:files')).toEqual({ 'quest-done': '/Users/geralt/Music/done.mp3' })
+  await w.clock.advance(10)
+  expect(w.sounds.map(s => s.asset)).toEqual(['audio/mpeg;SUQz'])
+  expect(await hud($, 'sound file')).toContain('quest-done ← /Users/geralt/Music/done.mp3')
+
+  // A quest's end plays it.
+  await quest($, 'fix the login redirect bug', 't1')
+  await complete($, 't1')
+  await w.clock.advance(6000)
+  expect(w.sounds.map(s => s.asset)).toEqual(['audio/mpeg;SUQz', 'audio/mpeg;SUQz'])
+
+  // Put back: the HUD's clip again.
+  expect(await hud($, 'sound file quest-done reset')).toBe('quest-done plays the HUD’s own clip again.')
+  expect(w.store.get('sound:v1:files')).toEqual({})
+  await quest($, 'add the logout button', 't2')
+  await complete($, 't2')
+  await w.clock.advance(6000)
+  expect(w.sounds.at(-1)?.asset).toBe('sounds/quest-done.wav')
+})
+
+test('a file chosen in an earlier session plays, and one gone since gives way to the HUD’s clip', async ($, on) => {
+  const w = world(on, { muted: null, store: { 'sound:v1:files': { 'quest-done': '/Users/geralt/Music/gone.mp3', 'level-up': '/Users/geralt/Music/up.wav', nonsense: '/x.mp3' } } })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  w.files.set('/Users/geralt/Music/up.wav', { size: 1000, base64: 'UklG' })
+  await quest($, 'fix the login redirect bug', 't1')
+  await complete($, 't1')
+  await w.clock.advance(6000)
+  expect(w.sounds.map(s => s.asset)).toEqual(['sounds/quest-done.wav'])
+  const text = await hud($, 'sound file')
+  expect(text).toContain('level-up ← /Users/geralt/Music/up.wav')
+  expect(text).not.toContain('nonsense')
+})
+
+test('/hud sound file refuses a file that is missing, too big, not audio, or for no sound', { options: { language: 'ru' } }, async ($, on) => {
+  const w = world(on, { files: { '/Users/geralt/big.wav': { size: 5 * 1024 * 1024, base64: '' }, '/Users/geralt/notes.txt': { size: 10, base64: '' } } })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  expect(await hud($, 'sound file quest-done ~/nowhere.mp3')).toBe('Файл не найден: ~/nowhere.mp3.')
+  expect(await hud($, 'sound file quest-done /Users/geralt/big.wav')).toBe('Файл больше 4 МБ: выберите клип короче.')
+  expect(await hud($, 'sound file quest-done /Users/geralt/notes.txt')).toBe('Выберите файл MP3, WAV, M4A или AIFF.')
+  expect(await hud($, 'sound file dragon /Users/geralt/big.wav')).toContain('Звуки: igni|aard|quen|yrden|axii|senses|quest-done|')
+  expect(w.store.has('sound:v1:files')).toBe(false)
+  expect(w.sounds).toEqual([])
 })
 
 test('a HUD with its sound off plays nothing', { options: { sound: 'off' } }, async ($, on) => {

@@ -6,7 +6,7 @@ Every prompt is a quest, every tool a sign, every token experience.
 </p>
 
 <p align="center">
-<img alt="Version 4.0.1" src="https://img.shields.io/badge/version-4.0.1-b08d57">
+<img alt="Version 4.1.0" src="https://img.shields.io/badge/version-4.1.0-b08d57">
 <img alt="A Claude Code plugin" src="https://img.shields.io/badge/Claude_Code-plugin-d97757">
 <img alt="English and Russian" src="https://img.shields.io/badge/speaks-English_%7C_%D0%A0%D1%83%D1%81%D1%81%D0%BA%D0%B8%D0%B9-6e6a5e">
 </p>
@@ -34,7 +34,7 @@ The HUD sits in one slim row above the prompt and plays the session as a hunt. I
  ▲ ▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂ 66%  ◆◆◇  Lv 5 ━━────  ⛁ 1.87  Fix the login redirect ◆ Igni: npm test
 ```
 
-It speaks English or Russian. Current version: 4.0.1.
+It speaks English or Russian. Current version: 4.1.0.
 
 ## Install
 
@@ -178,7 +178,7 @@ At most two moments are drawn at a time; the rest wait their turn, and a minor o
 
 ## Sound
 
-> **Out of the box you hear one thing only: a short chime when Claude finishes**, and a different one when the quest failed. Every other sound is off until you turn it on.
+> **Out of the box you hear one thing only: a short fanfare when Claude finishes**, and a different sound when the quest failed. Every other sound is off until you turn it on.
 
 ### What can sound
 
@@ -253,6 +253,7 @@ Where no pane can open, `/hud sound` answers with the same settings as text, and
 | set the volume | `/hud sound on` (Full), `/hud sound quiet` or `/hud sound off` |
 | turn one kind or one sign on | `/hud sound <name> on`, for example `/hud sound levels on` |
 | turn one kind or one sign off | `/hud sound <name> off`, for example `/hud sound senses off` |
+| play a file of yours for a sound | `/hud sound file <sound> <path>`, see [A sound of your own](#a-sound-of-your-own) |
 
 The names are the ones in the two tables above.
 
@@ -263,7 +264,8 @@ The names are the ones in the two tables above.
 | only to hear when Claude is done | nothing: that is how it starts |
 | no sound at all | `/hud sound off` |
 | softer sounds | `/hud sound quiet` |
-| no chime when Claude is done | `/hud sound quests off` |
+| no fanfare when Claude is done | `/hud sound quests off` |
+| your own clip when Claude is done | `/hud sound file quest-done ~/Music/done.mp3` |
 | level ups and trophies too | `/hud sound levels on`, then `/hud sound trophies on` |
 | every sign but the one at each file read | `/hud sound signs on`, then `/hud sound senses off` |
 | everything | `/hud sound` and press **Turn on** on each kind |
@@ -278,11 +280,23 @@ The names are the ones in the two tables above.
 
 ### A sound of your own
 
-Put an MP3, WAV, M4A or AIFF file in `sounds/local/` inside the plugin's folder, named after the sound it replaces, and the HUD plays it instead. For example, `sounds/local/quest-done.mp3` plays when Claude finishes its work. It is picked up when a session starts, and the kinds turned on or off still apply.
+Any clip on your computer can take the place of one of the HUD's sounds:
 
-The names: `quest-done`, `quest-failed`, `level-up`, `monster`, `slain`, `trophy`, `meditate`, `restored`, `danger`, and the signs `igni`, `aard`, `quen`, `yrden`, `axii`, `senses`.
+```
+/hud sound file quest-done ~/Music/done.mp3
+```
 
-git ignores `sounds/local/`, so your clips stay on your computer: an update never removes them, and they are never published with the plugin.
+From then on that file plays when Claude finishes, in every session, and it plays once right away so you hear it. It can be an MP3, WAV, M4A or AIFF file of up to 4 MB; a path with spaces works as it is or in quotes. The HUD keeps only the path: the file stays where it is and is read each time it plays, so if you move or delete it, the HUD's own clip plays instead.
+
+| To | Type |
+| --- | --- |
+| see which sounds play a file of yours | `/hud sound file` |
+| choose a file for a sound | `/hud sound file <sound> <path>` |
+| go back to the HUD's clip | `/hud sound file <sound> reset` |
+
+The sounds: `quest-done`, `quest-failed`, `level-up`, `monster`, `slain`, `trophy`, `meditate`, `restored`, `danger`, and the signs `igni`, `aard`, `quen`, `yrden`, `axii`, `senses`. The kinds turned on or off still apply: a file for `level-up` sounds only while Level up is on.
+
+**Or put it in the plugin's folder.** A file in `sounds/local/` inside the plugin's folder, named after the sound it replaces (`sounds/local/quest-done.mp3`), plays too; it is picked up when a session starts. git ignores `sounds/local/`, so those clips stay on your computer: an update never removes them, and they are never published with the plugin. A file chosen with the command comes first.
 
 ## Career
 
@@ -319,7 +333,7 @@ On the desktop the HUD follows the app's appearance: the dark plate in dark mode
 | `/hud` | Sheathes or draws the HUD. |
 | `/hud journal` | Opens the journal pane: quests, bestiary, trophies and signs. |
 | `/hud stats` | Shows the character sheet: every number behind the bars, with the context used, the tokens sent, generated and read from cache, and the model requests made. |
-| `/hud sound` | Opens the sound settings. `/hud sound on\|quiet\|off` sets the volume, `/hud sound <name> on\|off` one kind of sound or one sign. See [Sound](#sound). |
+| `/hud sound` | Opens the sound settings. `/hud sound on\|quiet\|off` sets the volume, `/hud sound <name> on\|off` one kind of sound or one sign, `/hud sound file <sound> <path>\|reset` a file of yours for a sound. See [Sound](#sound). |
 | `/hud lang en\|ru` | Picks the language. |
 | `/hud theme auto\|dark\|light` | Picks the desktop theme. |
 
@@ -365,6 +379,7 @@ Claude Code writes `.claude-plugin/types/` and `tsconfig.json` each time it load
 
 ## Versions
 
+- **4.1.0** A new sound when Claude finishes: a short fanfare, a lute running up to a major chord with brass, a drum and a bell, as loud as before and still original. `/hud sound file <sound> <path>` plays any MP3, WAV, M4A or AIFF file on your computer for one of the HUD's sounds, in every session; `/hud sound file` lists them and `/hud sound file <sound> reset` puts the HUD's clip back.
 - **4.0.1** The desktop HUD's words no longer run together. The desktop app blocks web fonts inside the HUD, so the embedded face never loaded and a wider fallback was drawn over widths measured for it; the HUD now draws with the system's Palatino and measures with its own widths. A two-digit level sits in the middle of its badge. A sound of your own: a clip in `sounds/local/`, named after the sound it replaces, plays instead and stays on your computer.
 - **4.0.0** The hunt comes alive and lasts. Moments play out on the desktop plate: a quest completed or failed, a level up, a monster met when a tool fails and slain when it then succeeds, a trophy, meditation while `/compact` runs and the vitality it gives back; with each sign's own burst, a hit flash, a low-vitality glow and the time of day. Sounds for the signs and the moments, only a quest's end on at first: `/hud sound` opens their settings, where each kind (or each sign) turns off on its own, and `/hud sound on|quiet|off` sets the volume. A career kept across sessions: the level counts all your experience on a new curve (250,000 XP to level 2, ten titles up to Grandmaster of the Wolf at level 40), a bestiary of eleven monsters, eighteen trophies, and `/hud journal`, a pane with the session's quests, the bestiary, the trophies and the signs. A subagent's prompt no longer renames the quest. The README shows it all in pictures.
 

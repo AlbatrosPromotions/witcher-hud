@@ -225,10 +225,18 @@ let heard = { at: -Infinity, priority: 0 }
 let lastSign = { key: null as SignKey | null, at: -Infinity }
 let loading: Promise<void> | null = null
 
+// The kinds of audio file a sound of one's own may be, by extension.
+const MIME: Record<string, string> = { mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/mp4', aiff: 'audio/aiff', aif: 'audio/aiff' }
+const extOf = (path: string) => {
+  const dot = path.lastIndexOf('.')
+  return dot > Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1 ? path.slice(dot + 1).toLowerCase() : ''
+}
+const isSound = (s: string): s is Sound => Object.prototype.hasOwnProperty.call(GROUP_OF, s)
+
 // Clips of the person's own in sounds/local/, each named after the sound it takes the place of
 // (quest-done.mp3). git ignores that folder, so a clip someone adds stays on their computer.
 const OWN_DIR = 'sounds/local'
-const OWN_TYPES = ['mp3', 'wav', 'm4a', 'aiff']
+const OWN_TYPES = Object.keys(MIME)
 let ownClips = new Map<string, string>()
 const loadOwnClips = async ($: EngineInterface) => {
   const found = new Map<string, string>()
@@ -236,7 +244,7 @@ const loadOwnClips = async ($: EngineInterface) => {
     for (const entry of await $.fs.list(`${$.plugin.root}/${OWN_DIR}`)) {
       const dot = entry.name.lastIndexOf('.')
       const sound = entry.name.slice(0, dot)
-      if (entry.kind === 'file' && dot > 0 && sound in GROUP_OF && OWN_TYPES.includes(entry.name.slice(dot + 1).toLowerCase()))
+      if (entry.kind === 'file' && dot > 0 && isSound(sound) && OWN_TYPES.includes(entry.name.slice(dot + 1).toLowerCase()))
         found.set(sound, `${OWN_DIR}/${entry.name}`)
     }
   } catch {
@@ -245,6 +253,37 @@ const loadOwnClips = async ($: EngineInterface) => {
   ownClips = found
 }
 const clipOf = (sound: Sound) => ({ asset: ownClips.get(sound) ?? `sounds/${sound}.wav` })
+
+// Files anywhere on the computer, chosen with /hud sound file and kept in the store by their path.
+// One is read each time it plays, so a change to it is heard the next time; it comes before
+// sounds/local, and a file gone or unplayable gives way to the clip beneath it.
+const FILES = 'sound:v1:files'
+// What one read of a file may copy, and so the largest clip.
+const MAX_FILE = 4 * 1024 * 1024
+let chosenFiles = new Map<string, string>()
+const filesNow = (v: unknown) =>
+  new Map(v !== null && typeof v === 'object' ? Object.entries(v).filter((kv): kv is [string, string] => isSound(kv[0]) && typeof kv[1] === 'string') : [])
+const loadChosenFiles = async ($: EngineInterface) => {
+  try {
+    chosenFiles = filesNow(await $.store.get(FILES))
+  } catch {
+    // The store unread: the clips in the plugin's folder.
+  }
+}
+
+const sounded = async ($: EngineInterface, sound: Sound, gain: number) => {
+  const path = chosenFiles.get(sound)
+  if (path !== undefined) {
+    try {
+      const { base64 } = await $.fs.read(path, { as: 'bytes' })
+      await $.audio.play({ base64, mime: MIME[extOf(path)] ?? 'audio/mpeg' }, { gain })
+      return
+    } catch {
+      // Moved, deleted or unplayable: the clip beneath it.
+    }
+  }
+  await $.audio.play(clipOf(sound), { gain })
+}
 
 // A clip plays where the session is on show, never in a headless run; one that cannot play is silence.
 const play = async ($: EngineInterface, sound: Sound) => {
@@ -261,7 +300,7 @@ const play = async ($: EngineInterface, sound: Sound) => {
     }
     if ((await $.session.surfaces()).length === 0) return
     heard = { at: now, priority }
-    await $.audio.play(clipOf(sound), { gain: loudness * (isSignKey(sound) ? SIGN_GAIN : 1) })
+    await sounded($, sound, loudness * (isSignKey(sound) ? SIGN_GAIN : 1))
   } catch {
     // No player, no surface, no sound.
   }
@@ -272,7 +311,7 @@ const play = async ($: EngineInterface, sound: Sound) => {
 const listen = async ($: EngineInterface, sound: Sound) => {
   try {
     const loudness = config.loudness || LOUDNESS.quiet
-    await $.audio.play(clipOf(sound), { gain: loudness * (isSignKey(sound) ? SIGN_GAIN : 1) })
+    await sounded($, sound, loudness * (isSignKey(sound) ? SIGN_GAIN : 1))
   } catch {
     // No player, no sound.
   }
@@ -314,6 +353,52 @@ const soundText = async ($: EngineInterface) => {
   const signs = (Object.keys(SIGNS) as SignKey[]).filter(k => off.includes(k)).map(k => signName(k, config.lang))
   if (signs.length > 0) rows.push(`✗ ${signs.join(', ')}`)
   return [...(config.loudness === 0 ? [w.allOff] : []), ...rows, '', w.usage].join('\n')
+}
+
+// /hud sound file: which sounds play a file of one's own; `<sound> <path>` chooses one, kept by its
+// full path for every session, and plays it once; `<sound> reset` puts the HUD's clip back.
+const fileCommand = async ($: EngineInterface, args: string): Promise<string> => {
+  const w = wordsNow().sounds
+  const names = Object.keys(GROUP_OF)
+  const help = w.fileHelp(names.join('|'))
+  if (args === '') {
+    const rows = names.flatMap(s => {
+      const file = chosenFiles.get(s) ?? ownClips.get(s)
+      return file === undefined ? [] : [`${s} ← ${file}`]
+    })
+    return [...(rows.length > 0 ? rows : [w.filesNone]), '', help].join('\n')
+  }
+  const [, which = '', given = ''] = /^(\S+)\s+(.+)$/s.exec(args) ?? []
+  const sound = which.toLowerCase()
+  if (!isSound(sound)) return help
+  const target = given.trim().replace(/^(['"])(.*)\1$/s, '$2')
+  const keep = async () => {
+    try {
+      await $.store.set(FILES, Object.fromEntries(chosenFiles))
+    } catch {
+      // Kept for this session only.
+    }
+  }
+  if (target.toLowerCase() === 'reset') {
+    chosenFiles.delete(sound)
+    await keep()
+    return w.fileReset(sound)
+  }
+  // `~` is the home folder, which the file system does not spell out itself.
+  const home = /^~(?=$|[\\/])/.test(target) ? ((await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE'))) : ''
+  if (home === undefined) return w.fileMissing(target)
+  const path = home === '' ? target : home + target.slice(1)
+  if (MIME[extOf(path)] === undefined) return w.fileType
+  const stat = await $.fs.stat(path, { resolve: true }).catch(() => undefined)
+  if (stat === undefined || stat.kind !== 'file') return w.fileMissing(target)
+  if (stat.size > MAX_FILE) return w.fileTooBig
+  // A path relative to this session's folder is kept as the full path it names.
+  const isAbsolute = /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(path)
+  chosenFiles.set(sound, isAbsolute ? path : (stat.realPath ?? path))
+  await keep()
+  // Heard once where the session is on show, never in a headless run.
+  if ((await $.session.surfaces().catch(() => [])).length > 0) void listen($, sound)
+  return w.fileSet(sound, path.slice(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1))
 }
 
 // A moment plays after the ones queued before it, its sound as it begins.
@@ -501,11 +586,12 @@ export const register: Register = (on, options) => {
     await $.command.register({
       name: 'hud',
       description: words.command,
-      argumentHint: '[journal | stats | sound [on|quiet|off] | sound <kind> on|off | lang en|ru | theme auto|dark|light]',
+      argumentHint: '[journal | stats | sound [on|quiet|off] | sound <kind> on|off | sound file <sound> <path>|reset | lang en|ru | theme auto|dark|light]',
     })
     await ensureCareer($)
     await loadMuted($)
     await loadOwnClips($)
+    await loadChosenFiles($)
     return next(e)
   })
 
@@ -556,6 +642,8 @@ export const register: Register = (on, options) => {
       const r = await $.ui.open({ id: SOUND_PANE, title: words.sounds.title })
       return { text: r.isPlaced ? words.sounds.opened : await soundText($) }
     }
+    const file = /^sound\s+file\b\s*(.*)$/is.exec(args)
+    if (file !== null) return { text: await fileCommand($, (file[1] ?? '').trim()) }
     const [, which = '', state = ''] = /^sound\s+(\S+)\s+(on|off)$/i.exec(args) ?? []
     const key = which.toLowerCase()
     if (SOUND_KEYS.includes(key)) {
