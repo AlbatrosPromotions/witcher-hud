@@ -1,11 +1,18 @@
-// The desktop HUD as SVG markup, drawn from the boxes hooks/layout.ts places: the character
+// The desktop HUD as one SVG drawing, from the boxes hooks/layout.ts places: the character
 // (medallion, vitality and stamina, adrenaline, level) on the left, the quest or the character
 // sheet on the right, on one plate. Colours are CSS variables, so one drawing follows the
 // app's light or dark appearance; motion is CSS, so a reduced-motion setting stills it.
+//
+// The drawing fills whatever width its frame has: the plate's tip and the crowns are placed from
+// the right edge, everything else from the left, and the parts that change with the width (the
+// compact bars, the quest, the crowns, where each text is cut) are drawn once per band of widths
+// (layout.ts `bands`), the frame's own width picking one with a CSS media query. Nothing in it
+// depends on the band width the engine reports, so a redraw never moves or drops a part.
 import type { SignKey } from '../types'
 import { TITLE_FAMILY, TITLE_WOFF2 } from './font'
 import {
   H,
+  MAX_W,
   MID,
   PLATE_BOTTOM,
   PLATE_TOP,
@@ -14,12 +21,13 @@ import {
   SIGN_SPACING,
   SIZE,
   TIP,
+  TITLE_SPACING,
   baselineAt,
   fitText,
   monoWidth,
   textWidth,
 } from './layout'
-import type { Layout } from './layout'
+import type { Band, Layout } from './layout'
 import { GOLD_HI, SIGNS } from './lore'
 import type { QuestLine } from './lore'
 
@@ -126,21 +134,32 @@ const MOTION =
   '.levelup{animation:whud-glow 1s ease-in-out infinite}' +
   '@media (prefers-reduced-motion:reduce){*{animation:none!important}.low,.ghost{opacity:0}}'
 
-const style = (theme: Theme) =>
+const TITLE_FONT = `'${TITLE_FAMILY}', 'Hoefler Text', Baskerville, 'PT Serif', Georgia, serif`
+const MONO_FONT = "'SF Mono', Menlo, ui-monospace, monospace"
+const NUMS = 'font-variant-numeric:lining-nums tabular-nums'
+
+// The drawing takes its frame's width (up to MAX_W) and its height; the sheet shows in the quest's
+// place while the pointer is on the character. A band's parts are hidden but where its range holds.
+const FRAME =
+  `.hud{display:block;width:100%;max-width:${MAX_W}px;height:${H}px;overflow:hidden}` +
+  '.anchor{overflow:visible}' +
+  `.tt{font-family:${TITLE_FONT}}.tm{font-family:${MONO_FONT}}` +
+  '.sheet{display:none}.char:hover~.right .sheet{display:inline}.char:hover~.right .quest{display:none}' +
+  '.v{display:none}'
+
+const style = (theme: Theme, ranges: string) =>
   '<style>' +
   FONT_FACE +
   (theme === 'auto'
     ? `svg{${vars(DARK)}}@media (prefers-color-scheme:light){svg{${vars(LIGHT)}}}`
     : `svg{${vars(theme === 'light' ? LIGHT : DARK)}}`) +
   MOTION +
+  FRAME +
+  ranges +
   '</style>'
 
 const fill = (name: string, extra = '') => `style="fill:var(--${name})${extra === '' ? '' : `;${extra}`}"`
 const strokeOf = (name: string) => `style="stroke:var(--${name})"`
-
-const TITLE_FONT = `'${TITLE_FAMILY}', 'Hoefler Text', Baskerville, 'PT Serif', Georgia, serif`
-const MONO_FONT = "'SF Mono', Menlo, ui-monospace, monospace"
-const NUMS = 'font-variant-numeric:lining-nums tabular-nums'
 
 export const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -152,8 +171,8 @@ const r1 = (n: number) => Math.round(n * 10) / 10
 const diamond = (cx: number, cy: number, h: number) =>
   `M${r1(cx)} ${r1(cy - h)}L${r1(cx + h)} ${r1(cy)}L${r1(cx)} ${r1(cy + h)}L${r1(cx - h)} ${r1(cy)}Z`
 
-const text = (x: number, centre: number, size: number, body: string, attrs: string) =>
-  `<text x="${r1(x)}" y="${baselineAt(centre, size)}" font-family="${TITLE_FONT}" font-size="${size}" ${attrs}>${body}</text>`
+const text = (x: number, centre: number, size: number, body: string, attrs: string, face = 'tt') =>
+  `<text class="${face}" x="${r1(x)}" y="${baselineAt(centre, size)}" font-size="${size}" ${attrs}>${body}</text>`
 
 // Original line glyphs in the spirit of the five signs, drawn around (20, 20), about 18px across.
 export const glyph = (sign: SignKey | null, tint: string) => {
@@ -199,8 +218,11 @@ const CHARACTER_DEFS =
   `<linearGradient id="sta" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F8E08A"/><stop offset=".5" stop-color="#D9A72E"/><stop offset="1" stop-color="#8E6510"/></linearGradient>` +
   `<radialGradient id="pip" cx=".5" cy=".4" r=".62"><stop offset="0" stop-color="#FFFBEA"/><stop offset=".55" stop-color="#F0D58E"/><stop offset="1" stop-color="#A7823A"/></radialGradient>`
 
-const svgOpen = (w: number, theme: Theme, defs: string) =>
-  `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${H}" viewBox="0 0 ${w} ${H}">${style(theme)}<defs>${DEFS}${defs}</defs>`
+// The plate from the medallion's centre on: the fluid plate is drawn from far left of the right edge.
+const FROM_MID = `<clipPath id="from-mid"><rect x="${MID}" y="0" width="100%" height="${H}"/></clipPath>`
+
+// Children drawn at their distance from the right edge: x 0 is the edge, -1 the last pixel.
+const anchored = (body: string) => `<svg class="anchor" x="100%" y="0" overflow="visible">${body}</svg>`
 
 // The plate's fill and its gold hairlines, x0 to x1 in this drawing, pointed at `tip` when it ends here.
 const plate = (x0: number, x1: number, tip: number | null) => {
@@ -327,7 +349,7 @@ const badge = (L: Layout, a: CharacterArt) => {
       ? `<path class="levelup" d="${ringPath}" fill="none" stroke="${GOLD_HI}" stroke-width="2" stroke-linejoin="round" filter="url(#glow)"/>`
       : '') +
     `<path d="${diamond(cx, cy, inner)}" stroke="url(#gold)" stroke-width="1.2" ${fill('badge')}/>` +
-    `<text x="${cx}" y="${baselineAt(cy, SIZE.level)}" text-anchor="middle" font-family="${TITLE_FONT}" font-size="${a.level >= 10 ? 11 : SIZE.level}" ${fill('badge-num', NUMS)}>${a.level}</text>` +
+    `<text class="tt" x="${cx}" y="${baselineAt(cy, SIZE.level)}" text-anchor="middle" font-size="${a.level >= 10 ? 11 : SIZE.level}" ${fill('badge-num', NUMS)}>${a.level}</text>` +
     `</g>`
   )
 }
@@ -338,28 +360,16 @@ const divider = (L: Layout) =>
     : `<path d="M${L.divider.x} ${L.divider.top}V${L.divider.bottom}" stroke="url(#vline)" stroke-width="1"/>` +
       `<path d="${diamond(L.divider.x, MID, 2.5)}" fill="url(#gold)"/>`
 
-export const characterSvg = (L: Layout, a: CharacterArt): string =>
-  svgOpen(L.split, a.theme, CHARACTER_DEFS) +
-  plate(MID, L.split, L.quest === null ? L.plateEnd : null) +
-  medallion(L, a) +
-  bars(L, a) +
-  pips(L, a) +
-  badge(L, a) +
-  divider(L) +
-  '</svg>'
-
 export type Cast = { key: SignKey; name: string; detail: string }
 
-export type QuestArt = {
-  theme: Theme
+export type HudArt = CharacterArt & {
   line: QuestLine
   // The sign at work, drawn in its own colour; null draws the line's objective.
   cast: Cast | null
   crowns: string | null
+  // The character sheet, shown in the quest's place while the pointer is on the character.
+  sheet: { title: string; stats: string }
 }
-
-// The quest and the sheet share the right-hand drawing: the plate from the split to the tip.
-const rightPlate = (L: Layout) => plate(0, L.width - L.split, L.plateEnd - L.split)
 
 const bullet = (tone: QuestLine['tone'], cx: number, cy: number) =>
   ({
@@ -369,65 +379,117 @@ const bullet = (tone: QuestLine['tone'], cx: number, cy: number) =>
     failed: `<path d="M${cx - 2.6} ${cy - 2.6}L${cx + 2.6} ${cy + 2.6}M${cx + 2.6} ${cy - 2.6}L${cx - 2.6} ${cy + 2.6}" stroke-width="1.5" stroke-linecap="round" ${strokeOf('cross')}/>`,
   })[tone]
 
-const crownsMark = (L: Layout, crowns: string | null, dx: number) => {
+// Each band's plate: pointed after the badge while the quest has no room, else reaching the right edge.
+const FLUID_PLATE = `<g clip-path="url(#from-mid)">${anchored(plate(-2 * MAX_W, 0, -1))}</g>`
+const plateOf = (L: Layout) => (L.quest === null ? plate(MID, L.plateEnd, L.plateEnd) : FLUID_PLATE)
+
+// The character's own hover area, up to where the quest's room begins.
+const characterOf = (L: Layout, a: CharacterArt) =>
+  `<rect x="0" y="0" width="${L.split}" height="${H}" fill="transparent"/>` + bars(L, a) + pips(L, a) + badge(L, a) + divider(L)
+
+const titleOf = (L: Layout, title: string, ink: string) => {
+  if (L.quest === null) return ''
+  const { x, right } = L.quest
+  const cut = fitText(title, right - x, t => textWidth(t, SIZE.title, TITLE_SPACING))
+  return text(x, ROW_TITLE, SIZE.title, esc(cut), `letter-spacing="${TITLE_SPACING}" ${fill(ink)} filter="url(#shadow)"`)
+}
+
+// The quest's lower row: the sign's glyph and name, or the objective's bullet.
+const lineHeadOf = (L: Layout, a: HudArt) => {
+  if (L.quest === null) return ''
+  const { glyph: g, textX } = L.quest
+  const gx = g.x + g.w / 2
+  const gy = g.y + g.h / 2
+  if (a.cast === null) return bullet(a.line.tone, gx, gy)
+  const ink = `var(--sign-${a.cast.key})`
+  return (
+    `<g transform="translate(${gx} ${gy}) scale(.66) translate(-20 -20)">${glyph(a.cast.key, ink)}</g>` +
+    text(textX, ROW_LINE, SIZE.sign, esc(a.cast.name.toUpperCase()), `letter-spacing="${SIGN_SPACING}" style="fill:${ink}" filter="url(#shadow)"`)
+  )
+}
+
+// The rest of that row: the sign's detail in mono after its name, or the objective, cut to the room.
+const lineTextOf = (L: Layout, a: HudArt) => {
+  if (L.quest === null) return ''
+  const { right, textX } = L.quest
+  if (a.cast !== null) {
+    const x = textX + textWidth(a.cast.name.toUpperCase(), SIZE.sign, SIGN_SPACING) + 6
+    const detail = fitText(a.cast.detail, right - x, t => monoWidth(t, SIZE.mono))
+    return text(x, ROW_LINE, SIZE.mono, esc(detail), `${fill('mono')} filter="url(#shadow)"`, 'tm')
+  }
+  const tone = { active: 'text', done: 'done', failed: 'failed', idle: 'idle' }[a.line.tone]
+  const objective = fitText(a.line.objective, right - textX, t => textWidth(t, SIZE.body))
+  return text(textX, ROW_LINE, SIZE.body, esc(objective), `${fill(tone)} filter="url(#shadow)"`)
+}
+
+const statsOf = (L: Layout, stats: string) => {
+  if (L.quest === null) return ''
+  const { x, right } = L.quest
+  return text(x, ROW_LINE, SIZE.body, esc(fitText(stats, right - x, t => textWidth(t, SIZE.body))), `${fill('text', NUMS)} filter="url(#shadow)"`)
+}
+
+// The crowns keep their distance from the right edge: drawn at L's coordinates less its width.
+const crownsOf = (L: Layout, crowns: string | null) => {
   if (L.crowns === null || crowns === null) return ''
   const { coin, textX } = L.crowns
-  return (
+  const dx = L.width
+  return anchored(
     `<circle cx="${coin.cx - dx}" cy="${coin.cy}" r="${coin.r}" fill="url(#gold)" stroke="#4E3A1B" stroke-width=".5"/>` +
-    `<circle cx="${coin.cx - dx}" cy="${coin.cy}" r="${coin.r - 2.2}" fill="none" stroke="#7A5A26" stroke-width=".7"/>` +
-    text(textX - dx, MID, SIZE.crowns, esc(crowns), `${fill('coin', NUMS)} filter="url(#shadow)"`)
+      `<circle cx="${coin.cx - dx}" cy="${coin.cy}" r="${coin.r - 2.2}" fill="none" stroke="#7A5A26" stroke-width=".7"/>` +
+      text(textX - dx, MID, SIZE.crowns, esc(crowns), `${fill('coin', NUMS)} filter="url(#shadow)"`),
   )
 }
 
-export const questSvg = (L: Layout, q: QuestArt): string => {
-  if (L.quest === null) return ''
-  const dx = L.split
-  const { x, right, glyph: g, textX } = L.quest
-  const titleRoom = right - x
-  const title = fitText(q.line.title, titleRoom, t => textWidth(t, SIZE.title))
-  const titleFill = q.line.tone === 'idle' ? 'idle-title' : 'title'
-  const gx = g.x + g.w / 2 - dx
-  const gy = g.y + g.h / 2
-  let line: string
-  if (q.cast) {
-    const ink = `var(--sign-${q.cast.key})`
-    const name = q.cast.name.toUpperCase()
-    const nameW = textWidth(name, SIZE.sign, SIGN_SPACING)
-    const detailX = textX + nameW + 6
-    const detail = fitText(q.cast.detail, right - detailX, t => monoWidth(t, SIZE.mono))
-    line =
-      `<g transform="translate(${gx} ${gy}) scale(.66) translate(-20 -20)">${glyph(q.cast.key, ink)}</g>` +
-      text(textX - dx, ROW_LINE, SIZE.sign, esc(name), `letter-spacing="${SIGN_SPACING}" style="fill:${ink}" filter="url(#shadow)"`) +
-      `<text x="${r1(detailX - dx)}" y="${baselineAt(ROW_LINE, SIZE.mono)}" font-family="${MONO_FONT}" font-size="${SIZE.mono}" ${fill('mono')} filter="url(#shadow)">${esc(detail)}</text>`
-  } else {
-    const tone = { active: 'text', done: 'done', failed: 'failed', idle: 'idle' }[q.line.tone]
-    const objective = fitText(q.line.objective, right - textX, t => textWidth(t, SIZE.body))
-    line = bullet(q.line.tone, gx, gy) + text(textX - dx, ROW_LINE, SIZE.body, esc(objective), `${fill(tone)} filter="url(#shadow)"`)
+// The width ranges the drawing's parts show in, each a class its media query shows.
+const rangeClasses = () => {
+  const names = new Map<string, string>()
+  const rules: string[] = []
+  const nameOf = (lo: number, hi: number) => {
+    const key = `${lo}-${hi}`
+    const known = names.get(key)
+    if (known !== undefined) return known
+    const name = `b${names.size}`
+    names.set(key, name)
+    const query = [lo > 0 ? `(width>=${lo}px)` : '', hi < Infinity ? `(width<${hi}px)` : ''].filter(Boolean).join(' and ')
+    rules.push(`@media ${query}{.${name}{display:inline}}`)
+    return name
   }
-  return (
-    svgOpen(L.width - L.split, q.theme, '') +
-    rightPlate(L) +
-    text(x - dx, ROW_TITLE, SIZE.title, esc(title), `letter-spacing=".2" ${fill(titleFill)} filter="url(#shadow)"`) +
-    line +
-    crownsMark(L, q.crowns, dx) +
-    '</svg>'
-  )
+  return { nameOf, css: () => rules.join('') }
 }
 
-export type SheetArt = { theme: Theme; title: string; stats: string; crowns: string | null }
+// One part drawn per run of bands it looks the same in; a part that is the same in all is drawn once.
+const perBand = (B: Band[], nameOf: (lo: number, hi: number) => string, draw: (L: Layout) => string) => {
+  const drawn = B.map(b => draw(b.L))
+  let out = ''
+  for (let i = 0; i < B.length; ) {
+    let j = i
+    while (j + 1 < B.length && drawn[j + 1] === drawn[i]) j++
+    const markup = drawn[i]!
+    const lo = B[i]!.lo
+    const hi = B[j]!.hi
+    if (markup !== '') out += lo <= 0 && hi === Infinity ? markup : `<g class="v ${nameOf(lo, hi)}">${markup}</g>`
+    i = j + 1
+  }
+  return out
+}
 
-// The character sheet, shown in the quest's place while the pointer is on the character.
-export const sheetSvg = (L: Layout, s: SheetArt): string => {
-  if (L.quest === null) return ''
-  const dx = L.split
-  const { x, right } = L.quest
-  const room = right - x
+export const hudSvg = (B: Band[], a: HudArt): string => {
+  const { nameOf, css } = rangeClasses()
+  const each = (draw: (L: Layout) => string) => perBand(B, nameOf, draw)
+  const titleInk = a.line.tone === 'idle' ? 'idle-title' : 'title'
+  const body =
+    `<g class="plate">${each(plateOf)}</g>` +
+    `<g class="char">${medallion(B[0]!.L, a)}${each(L => characterOf(L, a))}</g>` +
+    '<g class="right">' +
+    `<g class="quest">${each(L => titleOf(L, a.line.title, titleInk))}${each(L => lineHeadOf(L, a))}${each(L => lineTextOf(L, a))}</g>` +
+    `<g class="sheet">${each(L => titleOf(L, a.sheet.title, 'title'))}${each(L => statsOf(L, a.sheet.stats))}</g>` +
+    each(L => crownsOf(L, a.crowns)) +
+    '</g>'
   return (
-    svgOpen(L.width - L.split, s.theme, '') +
-    rightPlate(L) +
-    text(x - dx, ROW_TITLE, SIZE.title, esc(fitText(s.title, room, t => textWidth(t, SIZE.title))), `letter-spacing=".2" ${fill('title')} filter="url(#shadow)"`) +
-    text(x - dx, ROW_LINE, SIZE.body, esc(fitText(s.stats, room, t => textWidth(t, SIZE.body))), `${fill('text', NUMS)} filter="url(#shadow)"`) +
-    crownsMark(L, s.crowns, dx) +
+    `<svg xmlns="http://www.w3.org/2000/svg" class="hud" width="${MAX_W}" height="${H}">` +
+    style(a.theme, css()) +
+    `<defs>${DEFS}${CHARACTER_DEFS}${FROM_MID}</defs>` +
+    body +
     '</svg>'
   )
 }

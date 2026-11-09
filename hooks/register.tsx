@@ -2,9 +2,10 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Adrenaline, Ghost, Measure, Quest, QuestStatus, SignState, Totals } from '../types'
-import { characterSvg, questSvg, sheetSvg, themeOf } from './art'
-import type { Theme } from './art'
-import { H, layout } from './layout'
+import { hudSvg, themeOf } from './art'
+import type { HudArt, Theme } from './art'
+import { H, bands } from './layout'
+import type { Band } from './layout'
 import {
   GOLD,
   GOLD_HI,
@@ -47,10 +48,8 @@ const GHOST_MS = 1800
 const LEVEL_UP_MS = 4000
 // The medallion shakes once as a sign is cast; a redraw this soon after still shakes.
 const CAST_MS = 900
-// The desktop measures the band in cells of its code font, about this many pixels wide.
-const DESKTOP_CELL_PX = 7.5
-// The hover group: the pointer on the character shows the sheet in the quest's place.
-const SHEET_SCOPE = 'witcher-hud-sheet'
+// An Svg's source is held to this many characters.
+const SVG_LIMIT = 131072
 const THEMES: Theme[] = ['auto', 'dark', 'light']
 
 // A value an earlier version of the HUD kept in this session may have another shape.
@@ -58,6 +57,14 @@ const signNow = (s: unknown): SignState | null =>
   s !== null && typeof s === 'object' && isSignKey((s as { key?: unknown }).key) ? (s as SignState) : null
 const questNow = (q: unknown): Quest =>
   q !== null && typeof q === 'object' && typeof (q as { status?: unknown }).status === 'string' ? (q as Quest) : IDLE
+
+// Long texts cut at every band may outgrow the limit; every other band then goes, until it fits.
+const fittedSvg = (B: Band[], art: HudArt): string => {
+  const source = hudSvg(B, art)
+  if (source.length <= SVG_LIMIT || B.length < 2) return source
+  const fewer = B.filter((_, i) => i % 2 === 0).map((b, i, kept) => ({ ...b, hi: kept[i + 1]?.lo ?? Infinity }))
+  return fittedSvg(fewer, art)
+}
 
 const vitalityOf = (m: Measure) => (m.percent === undefined ? undefined : 100 - m.percent)
 
@@ -246,7 +253,6 @@ export const register: Register = (on, options) => {
     const n = (x: number) => fmt(x, lang)
     const w = words.sheet
     const crowns = usd === null ? null : money(usd, lang)
-    const L = layout({ width: e.props.bodyColumns * DESKTOP_CELL_PX - 24, hasStamina: stamina !== null, crowns })
     const castAt = s?.at
     const isCasting = shown !== null && castAt !== undefined && (await $.clock.now()) - castAt < CAST_MS
     const context = m.tokens !== undefined && m.window ? ` · ${w.context(n(m.tokens), n(m.window))}` : ''
@@ -256,7 +262,17 @@ export const register: Register = (on, options) => {
       adrenaline: `${w.adrenaline} ${points}/3 · ${w.streak(a.streak)}`,
       level: `${lv.title} · ${w.level} ${lv.level} · ${w.toLevel(n(lv.into), n(lv.need), lv.level + 1)}`,
     }
-    const character = characterSvg(L, {
+    const cast = q.status === 'active' && s !== null ? { key: s.key, name: signName(s.key, lang), detail: s.detail } : null
+    const sheetTitle = words.hover.title(lv.title, lv.level)
+    const sheetStats = [
+      `${w.experience} ${n(lv.into)} / ${n(lv.need)}`,
+      `↑${n(t.input + t.cacheWrite)} ↓${n(t.output)}`,
+      `${w.cache} ${n(t.cacheRead)}`,
+      w.contracts(t.calls),
+    ].join(' · ')
+    // One drawing for every width: it reads its own frame's width, so the band's reported columns
+    // (which a redraw may report in passing) never change what is drawn.
+    const source = fittedSvg(bands({ hasStamina: stamina !== null, crowns }), {
       theme,
       sign: shown,
       isWorking: e.props.isWorking,
@@ -269,6 +285,10 @@ export const register: Register = (on, options) => {
       xpFraction,
       isLevelUp: leveledTo !== null,
       tips,
+      line,
+      cast,
+      crowns,
+      sheet: { title: sheetTitle, stats: sheetStats },
     })
     const alt = [
       `${words.alt.vitality} ${vitality}%`,
@@ -276,34 +296,14 @@ export const register: Register = (on, options) => {
       words.alt.adrenaline(points),
       `${words.alt.level} ${lv.level}`,
       crowns === null ? '' : `${words.alt.crowns} ${crowns}`,
+      `${line.title}: ${line.objective}`,
     ]
       .filter(Boolean)
       .join(', ')
-    const characterBox = (
-      <Box key="witcher-hud-character" hover={{ scope: SHEET_SCOPE }}>
-        <Svg source={character} alt={alt} width={L.split} height={H} isInteractive />
-      </Box>
-    )
-    if (L.quest === null) return <Box key="witcher-hud" flexDirection="row">{characterBox}</Box>
-
-    const cast = q.status === 'active' && s !== null ? { key: s.key, name: signName(s.key, lang), detail: s.detail } : null
-    const right = L.width - L.split
-    const sheetTitle = words.hover.title(lv.title, lv.level)
-    const sheetStats = [
-      `${w.experience} ${n(lv.into)} / ${n(lv.need)}`,
-      `↑${n(t.input + t.cacheWrite)} ↓${n(t.output)}`,
-      `${w.cache} ${n(t.cacheRead)}`,
-      w.contracts(t.calls),
-    ].join(' · ')
+    // No width: the frame takes the drawing's own (MAX_W) up to the band's, and the drawing fills it.
     return (
-      <Box key="witcher-hud" flexDirection="row">
-        {characterBox}
-        <Box position="relative">
-          <Svg source={questSvg(L, { theme, line, cast, crowns })} alt={`${line.title}: ${line.objective}`} width={right} height={H} />
-          <Box position="absolute" top={0} left={0} display="none" hover={{ scope: SHEET_SCOPE, display: 'flex' }}>
-            <Svg source={sheetSvg(L, { theme, title: sheetTitle, stats: sheetStats, crowns })} alt={`${sheetTitle}: ${sheetStats}`} width={right} height={H} />
-          </Box>
-        </Box>
+      <Box key="witcher-hud" width="100%" overflow="hidden">
+        <Svg source={source} alt={alt} height={H} isInteractive />
       </Box>
     )
   })

@@ -8,7 +8,7 @@ In the desktop app it is drawn on one plate: a medallion that shakes once as eac
  ▲ ▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂ 66%  ◆◆◇  Lv 5 ━━────  ⛁ 1.87  Fix the login redirect ◆ Igni: npm test
 ```
 
-It speaks English or Russian. Current version: 3.0.0.
+It speaks English or Russian. Current version: 3.1.0.
 
 ## Install
 
@@ -97,18 +97,19 @@ claude plugin test ./witcher-hud
 | --- | --- |
 | `hooks/register.tsx` | The hooks: counts tokens, runs quests and signs, draws the HUD, answers `/hud`. |
 | `hooks/lore.ts` | The words in both languages, signs, levels and number formats. No engine calls, so tests and previews run it anywhere. |
-| `hooks/layout.ts` | The desktop HUD's geometry: one grid every box is placed on, centred on the midline with even gaps. |
-| `hooks/art.ts` | The desktop HUD as SVG, drawn from that layout: the character, the quest tracker and the character sheet, both themes. |
+| `hooks/layout.ts` | The desktop HUD's geometry: one grid every box is placed on, centred on the midline with even gaps, laid out for each band of widths. |
+| `hooks/art.ts` | The desktop HUD as one SVG drawn from that layout: the character, the quest tracker and the character sheet, both themes. It fills its frame's width, each band's parts shown by a CSS media query. |
 | `hooks/font.ts` | The embedded title face (generated): the woff2 as base64 and each glyph's advance, so text is measured. |
 | `hooks/terminal-hud.ts` | The terminal row, animated on the terminal's own frame clock. |
 | `types/index.d.ts` | The shapes of the HUD's session state. |
 | `tests/witcher-hud.test.ts` | The tests `claude plugin test` runs. |
-| `tests/geometry.test.ts` | The layout's rules checked over 140 widths: symmetry, gaps, whole pixels, no overlaps, text that fits. |
+| `tests/geometry.test.ts` | The layout's rules checked over 140 widths: symmetry, gaps, whole pixels, no overlaps, text that fits; and across every band of widths, no part that appears or drops inside one, and the right-hand parts' gap. |
 
 Claude Code writes `.claude-plugin/types/` and `tsconfig.json` each time it loads the plugin; both are gitignored. Bump `version` in `.claude-plugin/plugin.json` with each release, since `claude plugin update` goes by it.
 
 ## Versions
 
+- **3.1.0** The desktop HUD is one drawing that fills the band at any width: the plate reaches the right edge, the crowns stay at its end, and the quest's text is cut to the room it has, all read from the drawing's own width instead of a guess from the band's columns. Updates no longer blank the quest's half for a moment, and the title's letter spacing is counted when it is cut.
 - **3.0.0** The desktop HUD redrawn on one grid: one plate, the figures beside their bars, adrenaline as a column of pips, experience as a ring on the level badge, the sign's colour and a monospace target in the quest tracker, the crowns at the plate's end. A light parchment theme after the app's appearance and `/hud theme`, tooltips and a character sheet under the pointer, an embedded title face with Cyrillic, one shake per cast instead of a constant one, and stillness under reduce motion.
 - **2.1.1** The README and the marketplace listing brought up to date; the HUD itself is unchanged.
 - **2.1.0** Russian, after the game's Russian edition, and the `language` option with `/hud lang`.

@@ -15,8 +15,15 @@ export const GAP = 10
 export const TIP = 12
 export const MAX_W = 960
 
+// The narrowest band the drawing is laid out for; a narrower one shows its left end.
+export const MIN_W = 240
+// The desktop drawing is laid out at every STEP of width, and where a tier changes.
+export const STEP = 16
+
 export const SIZE = { title: 14, body: 12.5, vit: 13, sta: 10.5, level: 13, sign: 9.5, mono: 10.5, crowns: 12.5 } as const
 export const SIGN_SPACING = 1
+// The quest's title is drawn a little spaced, and measured so.
+export const TITLE_SPACING = 0.2
 // SF Mono and Menlo advance 0.6 em; a little over, so a cut never runs long.
 const MONO_EM = 0.61
 
@@ -50,11 +57,18 @@ export const capBox = (x: number, centre: number, width: number, size: number): 
 const round2 = (n: number) => Math.round(n * 100) / 100
 
 // Cut a text to a width, at a word where one is near, with an ellipsis.
+// The width of a cut grows with its length, so the longest cut that fits is found by halving.
 export const fitText = (s: string, room: number, measure: (t: string) => number): string => {
   if (measure(s) <= room) return s
   const chars = [...s]
-  let n = chars.length
-  while (n > 0 && measure(chars.slice(0, n).join('').trimEnd() + '…') > room) n -= 1
+  const fits = (k: number) => measure(chars.slice(0, k).join('').trimEnd() + '…') <= room
+  let n = 0
+  let top = chars.length - 1
+  while (n < top) {
+    const k = (n + top + 1) >> 1
+    if (fits(k)) n = k
+    else top = k - 1
+  }
   if (n <= 0) return ''
   const cut = chars.slice(0, n).join('')
   const space = cut.lastIndexOf(' ')
@@ -95,7 +109,7 @@ const NUMBERS_W = Math.ceil(Math.max(textWidth('100%', SIZE.vit), textWidth('100
 const COIN_R = 5
 
 export const layout = (input: LayoutInput): Layout => {
-  const width = Math.max(240, Math.min(MAX_W, Math.floor(input.width)))
+  const width = Math.max(MIN_W, Math.min(MAX_W, Math.floor(input.width)))
   const isCompact = width < 560
   const VW = isCompact ? 110 : 150
 
@@ -198,8 +212,33 @@ export const layout = (input: LayoutInput): Layout => {
   }
 }
 
-// The plate: a dark (or parchment) band from x0, its right end pointed at `end` when there is one.
-export const platePath = (x0: number, x1: number, end: number | null) =>
-  end === null
-    ? `M${x0} ${PLATE_TOP}H${x1}V${PLATE_BOTTOM}H${x0}Z`
-    : `M${x0} ${PLATE_TOP}H${end - TIP}L${end} ${MID}L${end - TIP} ${PLATE_BOTTOM}H${x0}Z`
+// One width range of the desktop drawing, [lo, hi) in CSS pixels, drawn as laid out at its lowest
+// width. What sits at the right (the plate's tip, the crowns) is drawn at its distance from the
+// right edge, the rest from the left, so whatever fits at the band's lowest width fits across it.
+export type Band = { lo: number; hi: number; L: Layout }
+
+const tierOf = (L: Layout) => `${L.isCompact}${L.quest !== null}${L.crowns !== null}`
+const bandCache = new Map<string, Band[]>()
+
+// The drawing's bands: one every STEP from MIN_W to MAX_W, and one from each width where a tier
+// (the compact bars, the quest, the crowns) starts. The first reaches down to 0, the last up without end.
+export const bands = (input: Omit<LayoutInput, 'width'>): Band[] => {
+  const key = `${input.hasStamina}|${input.crowns}`
+  const known = bandCache.get(key)
+  if (known) return known
+  const at = (width: number) => layout({ ...input, width })
+  const starts = new Set<number>()
+  for (let w = MIN_W; w <= MAX_W; w += STEP) starts.add(w)
+  let tier = tierOf(at(MIN_W))
+  for (let w = MIN_W + 1; w <= MAX_W; w++) {
+    const now = tierOf(at(w))
+    if (now !== tier) starts.add(w)
+    tier = now
+  }
+  const sorted = [...starts].sort((a, b) => a - b)
+  const out = sorted.map((lo, i) => ({ lo: i === 0 ? 0 : lo, hi: sorted[i + 1] ?? Infinity, L: at(lo) }))
+  // The crowns change as the session spends; a few recent ones are kept.
+  if (bandCache.size >= 8) bandCache.delete(bandCache.keys().next().value as string)
+  bandCache.set(key, out)
+  return out
+}

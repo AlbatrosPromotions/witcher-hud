@@ -1,8 +1,8 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { characterSvg, questSvg } from '../hooks/art'
-import type { CharacterArt } from '../hooks/art'
-import { layout } from '../hooks/layout'
+import { hudSvg } from '../hooks/art'
+import type { HudArt } from '../hooks/art'
+import { bands } from '../hooks/layout'
 import { clip, detailOf, durationRu, levelOf, money, pastWord, questLine, questTitle, signOf, spinnerWord } from '../hooks/lore'
 
 const usage = (input: number, output: number) => ({
@@ -22,9 +22,9 @@ const band = (isWorking: boolean, bodyColumns = 140) => ({
   view: {},
 })
 
-const L = layout({ width: 800, hasStamina: true, crowns: '1.87' })
+const B = bands({ hasStamina: true, crowns: '1.87' })
 
-const art: CharacterArt = {
+const art: HudArt = {
   theme: 'auto',
   sign: null,
   isWorking: false,
@@ -37,7 +37,13 @@ const art: CharacterArt = {
   xpFraction: 0.3,
   isLevelUp: false,
   tips: { vitality: 'Vitality 66%', stamina: 'Stamina', adrenaline: 'Adrenaline', level: 'Level' },
+  line: questLine('idle', '', 0, null),
+  cast: null,
+  crowns: '1.87',
+  sheet: { title: 'Kaer Morhen Trainee · Level 5', stats: 'Experience 1.2k / 5k' },
 }
+
+const draw = (over: Partial<HudArt> = {}) => hudSvg(B, { ...art, ...over })
 
 test('levels double and the titles climb', () => {
   expect(levelOf(0)).toEqual({ level: 1, title: 'Kaer Morhen Trainee', into: 0, need: 5000 })
@@ -75,34 +81,37 @@ test('the spinner and the turn line speak the trade', () => {
 })
 
 test('the desktop art animates what moves, and only once a sign is cast', () => {
-  expect(characterSvg(L, art)).not.toContain('class="shake"')
-  expect(characterSvg(L, art)).not.toContain('class="aura"')
-  expect(characterSvg(L, { ...art, isWorking: true })).toContain('class="aura"')
-  expect(characterSvg(L, { ...art, isWorking: true, isCasting: true })).toContain('class="shake"')
-  expect(characterSvg(L, { ...art, vitality: 41, ghostFrom: 66 })).toContain('class="ghost"')
-  expect(characterSvg(L, { ...art, vitality: 12 })).toContain('class="low"')
-  expect(characterSvg(L, { ...art, vitality: 12 })).toContain('fill:var(--low)')
+  expect(draw()).not.toContain('class="shake"')
+  expect(draw()).not.toContain('class="aura"')
+  expect(draw({ isWorking: true })).toContain('class="aura"')
+  expect(draw({ isWorking: true, isCasting: true })).toContain('class="shake"')
+  expect(draw({ vitality: 41, ghostFrom: 66 })).toContain('class="ghost"')
+  expect(draw({ vitality: 12 })).toContain('class="low"')
+  expect(draw({ vitality: 12 })).toContain('fill:var(--low)')
   // A reduced-motion setting stills it all.
-  expect(characterSvg(L, art)).toContain('@media (prefers-reduced-motion:reduce){*{animation:none!important}')
-  const quest = questSvg(L, { theme: 'auto', line: questLine('active', 'a <b> & "c"', 0, null), cast: null, crowns: null })
-  expect(quest).toContain('a &lt;b&gt; &amp; &quot;c&quot;')
+  expect(draw()).toContain('@media (prefers-reduced-motion:reduce){*{animation:none!important}')
+  expect(draw({ line: questLine('active', 'a <b> & "c"', 0, null), crowns: null })).toContain('a &lt;b&gt; &amp; &quot;c&quot;')
 })
 
 test('the art follows the app, or keeps the theme it is given', () => {
-  const auto = characterSvg(L, art)
+  const auto = draw()
   expect(auto).toContain('@media (prefers-color-scheme:light){svg{--plate-top:#FBF6EA')
-  const light = characterSvg(L, { ...art, theme: 'light' })
+  const light = draw({ theme: 'light' })
   expect(light).toContain('svg{--plate-top:#FBF6EA')
   expect(light).not.toContain('prefers-color-scheme')
-  expect(characterSvg(L, { ...art, theme: 'dark' })).not.toContain('#FBF6EA')
+  expect(draw({ theme: 'dark' })).not.toContain('#FBF6EA')
   // The title face is embedded, so the HUD reads the same on every machine.
   expect(auto).toContain("@font-face{font-family:'WHud Title';src:url(data:font/woff2;base64,")
   // Each bar and mark answers the pointer with its numbers.
   expect(auto).toContain('<title>Vitality 66%</title>')
-  const cast = questSvg(L, { theme: 'auto', line: questLine('active', 'Fix it', 0, { key: 'igni', detail: 'npm test' }), cast: { key: 'igni', name: 'Igni', detail: 'npm test' }, crowns: '1.87' })
+  const cast = draw({ line: questLine('active', 'Fix it', 0, { key: 'igni', detail: 'npm test' }), cast: { key: 'igni', name: 'Igni', detail: 'npm test' } })
   expect(cast).toContain('style="fill:var(--sign-igni)"')
   expect(cast).toContain('>IGNI</text>')
-  expect(cast).toContain("font-family=\"'SF Mono', Menlo, ui-monospace, monospace\"")
+  expect(cast).toContain(".tm{font-family:'SF Mono', Menlo, ui-monospace, monospace}")
+  expect(cast).toContain('<text class="tm"')
+  // The pointer on the character shows the sheet in the quest's place, inside the one drawing.
+  expect(cast).toContain('.char:hover~.right .sheet{display:inline}.char:hover~.right .quest{display:none}')
+  expect(cast).toContain('>Kaer Morhen Trainee · Level 5</text>')
 })
 
 test('a quest runs through the HUD on both surfaces', async ($, on) => {
@@ -142,15 +151,14 @@ test('a quest runs through the HUD on both surfaces', async ($, on) => {
 
   const desktop = await $.ui.mount({ plugin: 'witcher-hud', surface: 'desktop', component: 'AbovePrompt', props: band(true) })
   const svgs = await desktop.findAll({ type: 'Svg' })
-  // The character, the quest, and the sheet the pointer on the character shows in the quest's place.
-  expect(svgs.length).toBe(3)
+  // One drawing: the character, the quest, and the sheet the pointer on the character shows in its place.
+  expect(svgs.length).toBe(1)
   expect(String(svgs[0]?.props.alt)).toContain('adrenaline 1 of 3')
   expect(svgs[0]?.props.isInteractive).toBe(true)
-  expect(String(svgs[1]?.props.alt)).toBe('Fix the login redirect bug: Igni: npm test -- auth')
-  expect(String(svgs[2]?.props.alt)).toContain('Survivor of the Grasses · Level 2')
+  expect(String(svgs[0]?.props.alt)).toContain('Fix the login redirect bug: Igni: npm test -- auth')
+  expect(String(svgs[0]?.props.source)).toContain('>Survivor of the Grasses · Level 2</text>')
   // The sign was just cast: the medallion shakes once.
   expect(String(svgs[0]?.props.source)).toContain('class="shake"')
-  expect(Number(svgs[0]?.props.width) + Number(svgs[1]?.props.width)).toBe(Number(svgs[2]?.props.width) + Number(svgs[0]?.props.width))
 
   const terminal = await $.ui.mount({ plugin: 'witcher-hud', surface: 'terminal', component: 'AbovePrompt', props: band(true) })
   expect(await terminal.find({ type: 'Text', text: 'Igni: npm test -- auth', in: 'witcher-hud' })).toBeDefined()
@@ -178,8 +186,29 @@ test('a quest runs through the HUD on both surfaces', async ($, on) => {
   await $.turn.complete({ answer: 'Done.', durationMs: 4000, isAborted: false, turnId: 't1', reason: 'answer' })
   const done = await $.ui.mount({ plugin: 'witcher-hud', surface: 'desktop', component: 'AbovePrompt', props: band(false) })
   const doneSvgs = await done.findAll({ type: 'Svg' })
-  expect(String(doneSvgs[1]?.props.alt)).toBe('Fix the login redirect bug: Quest completed · +5.3k XP')
+  expect(String(doneSvgs[0]?.props.alt)).toContain(', Fix the login redirect bug: Quest completed · +5.3k XP')
   expect(String(doneSvgs[0]?.props.source)).not.toContain('class="aura"')
+})
+
+// A redraw must not move or drop part of the HUD: the band's reported columns (which may pass
+// through 0 or a stale count as the app lays out) never reach the drawing, and the tree keeps its shape.
+test('the desktop band is one drawing that the reported width never changes', async ($, on) => {
+  mock.clock(on)
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('tool.call', () => ({ result: 'ok' as never }))
+  await $.turn.start({ text: 'fix the login redirect bug', turnId: 't1' })
+  await $.tool.call({ tool: 'Bash', command: 'npm test' })
+  const drawn = []
+  for (const columns of [140, 0, 37, 90, 400]) {
+    const desktop = await $.ui.mount({ plugin: 'witcher-hud', surface: 'desktop', component: 'AbovePrompt', props: band(true, columns) })
+    const svgs = await desktop.findAll({ type: 'Svg' })
+    expect(svgs.length).toBe(1)
+    // No width: the frame takes the drawing's own up to the band, and the drawing fills the frame.
+    expect(svgs[0]?.props.width).toBe(undefined)
+    expect(svgs[0]?.props.isInteractive).toBe(true)
+    drawn.push(JSON.stringify(svgs[0]?.props))
+  }
+  expect(new Set(drawn).size).toBe(1)
 })
 
 test('the spinner and the closing line are reworded', async ($, on) => {
@@ -211,7 +240,7 @@ test('Russian follows the Russian edition of the game', () => {
   expect(spinnerWord('tool-use', 'quen', 'ru')).toBe('Знак Квен')
   expect([42000, 64000, 120000, 3900000].map(durationRu)).toEqual(['42 с', '1 мин 4 с', '2 мин', '1 ч 5 мин'])
   expect(money(1.87, 'ru')).toBe('1,87')
-  expect(questSvg(layout({ width: 800, hasStamina: true, crowns: '1,87' }), { theme: 'auto', line: questLine('idle', '', 0, null, 'ru'), cast: null, crowns: money(1.87, 'ru') })).toContain('>1,87<')
+  expect(hudSvg(bands({ hasStamina: true, crowns: '1,87' }), { ...art, line: questLine('idle', '', 0, null, 'ru'), crowns: money(1.87, 'ru') })).toContain('>1,87<')
 })
 
 test('the HUD speaks Russian when its option says so', { options: { language: 'ru' } }, async ($, on) => {
@@ -235,10 +264,10 @@ test('the HUD speaks Russian when its option says so', { options: { language: 'r
   const desktop = await $.ui.mount({ plugin: 'witcher-hud', surface: 'desktop', component: 'AbovePrompt', props: band(true) })
   const svgs = await desktop.findAll({ type: 'Svg' })
   expect(String(svgs[0]?.props.alt)).toContain('Жизненная сила 100%')
-  expect(String(svgs[1]?.props.alt)).toBe('Почини вход в систему: Игни: npm test')
+  expect(String(svgs[0]?.props.alt)).toContain('Почини вход в систему: Игни: npm test')
   // The embedded title face carries Cyrillic.
-  expect(String(svgs[1]?.props.source)).toContain("font-family=\"'WHud Title'")
-  expect(String(svgs[1]?.props.source)).toContain('>ИГНИ</text>')
+  expect(String(svgs[0]?.props.source)).toContain(".tt{font-family:'WHud Title'")
+  expect(String(svgs[0]?.props.source)).toContain('>ИГНИ</text>')
 
   const terminal = await $.ui.mount({ plugin: 'witcher-hud', surface: 'terminal', component: 'AbovePrompt', props: band(true) })
   expect(await terminal.find({ type: 'Text', text: 'Игни: npm test', in: 'witcher-hud' })).toBeDefined()

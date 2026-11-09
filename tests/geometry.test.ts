@@ -3,8 +3,28 @@
 // a rule rather than by eye.
 import { expect, test } from 'claude-code/testing'
 
-import { characterSvg, questSvg } from '../hooks/art'
-import { GAP, H, MID, PLATE_BOTTOM, PLATE_TOP, ROW_LINE, ROW_TITLE, SIZE, TIP, fitText, layout, monoWidth, textWidth } from '../hooks/layout'
+import { hudSvg } from '../hooks/art'
+import type { HudArt } from '../hooks/art'
+import {
+  GAP,
+  H,
+  MAX_W,
+  MID,
+  MIN_W,
+  PLATE_BOTTOM,
+  PLATE_TOP,
+  ROW_LINE,
+  ROW_TITLE,
+  SIZE,
+  STEP,
+  TIP,
+  TITLE_SPACING,
+  bands,
+  fitText,
+  layout,
+  monoWidth,
+  textWidth,
+} from '../hooks/layout'
 import type { Box, Layout } from '../hooks/layout'
 import { questLine } from '../hooks/lore'
 
@@ -154,29 +174,97 @@ test('text is cut to the room it has', () => {
     }
 })
 
-test('the drawings take the widths the layout gives them', () => {
-  const tips = { vitality: 'v', stamina: 's', adrenaline: 'a', level: 'l' }
-  for (const width of [300, 520, 800]) {
-    const L = layout({ width, hasStamina: true, crowns: '1.87' })
-    const character = characterSvg(L, {
-      theme: 'auto',
-      sign: null,
-      isWorking: false,
-      isCasting: false,
-      vitality: 66,
-      ghostFrom: null,
-      stamina: 72,
-      adrenaline: 2,
-      level: 5,
-      xpFraction: 0.4,
-      isLevelUp: false,
-      tips,
-    })
-    expect(character).toContain(`width="${L.split}" height="${H}" viewBox="0 0 ${L.split} ${H}"`)
-    // The vitality track is drawn on its box, its 1px edge on half pixels.
-    expect(character).toContain(`<rect x="${L.vit.x + 0.5}" y="${L.vit.y + 0.5}" width="${L.vit.w - 1}" height="${L.vit.h - 1}"`)
-    const quest = questSvg(L, { theme: 'auto', line: questLine('idle', '', 0, null), cast: null, crowns: '1.87' })
-    if (L.quest) expect(quest).toContain(`width="${L.width - L.split}" height="${H}"`)
-    else expect(quest).toBe('')
-  }
+const tierOf = (L: Layout) => `${L.isCompact} ${L.quest !== null} ${L.crowns !== null}`
+
+test('the bands cover every width, and a tier changes only where a band starts', () => {
+  for (const hasStamina of [true, false])
+    for (const crowns of CROWNS) {
+      const B = bands({ hasStamina, crowns })
+      expect(B[0]!.lo).toBe(0)
+      expect(B[B.length - 1]!.hi).toBe(Infinity)
+      for (let i = 0; i < B.length; i++) {
+        const { lo, hi, L } = B[i]!
+        if (i + 1 < B.length) expect(hi).toBe(B[i + 1]!.lo)
+        // No band is wider than a STEP of the widths it is laid out for.
+        const from = Math.max(lo, MIN_W)
+        if (hi !== Infinity) expect(hi - from <= STEP).toBe(true)
+        // Every width in the band has the band's tier: nothing appears or drops inside one.
+        for (let w = from; w < Math.min(hi, MAX_W + 1); w++) {
+          const at = `${hasStamina} ${crowns} ${w}px`
+          expect(`${at} ${tierOf(layout({ width: w, hasStamina, crowns }))}`).toBe(`${at} ${tierOf(L)}`)
+        }
+      }
+    }
+})
+
+// The plate's tip and the crowns keep their distance from the right edge; the rest keeps its place
+// from the left. Across a band the right-hand things only move away, so nothing meets.
+test('across each band the right-hand things keep their gap', () => {
+  for (const hasStamina of [true, false])
+    for (const crowns of CROWNS)
+      for (const { lo, hi, L } of bands({ hasStamina, crowns })) {
+        if (L.quest === null) continue
+        // The fluid plate ends on the frame's last pixel.
+        expect(L.plateEnd - L.width).toBe(-1)
+        for (const w of [Math.max(lo, MIN_W), Math.min(hi === Infinity ? MAX_W + 1 : hi, MAX_W + 1) - 1]) {
+          const shift = w - L.width
+          const at = `${hasStamina} ${crowns} ${w}px`
+          const tip = L.plateEnd + shift
+          expect(`${at} tip ${tip}`).toBe(`${at} tip ${w - 1}`)
+          if (L.crowns) {
+            const left = L.crowns.box.x + shift
+            const right = L.crowns.box.x + L.crowns.box.w + shift
+            expect(`${at} quest→crowns ${left - L.quest.right >= GAP}`).toBe(`${at} quest→crowns true`)
+            expect(`${at} crowns→tip ${tip - TIP - right}`).toBe(`${at} crowns→tip ${GAP}`)
+          } else {
+            expect(`${at} quest→tip ${tip - TIP - L.quest.right >= GAP}`).toBe(`${at} quest→tip true`)
+          }
+        }
+      }
+})
+
+const LONG = {
+  title: 'Перенеси схему базы данных на новую модель оплаты и обратно, проверь миграции и все отчёты по счетам',
+  detail: 'src/billing/migrations/2026_11_09_add_invoice_lines_and_backfill_the_ledger_for_every_customer.sql',
+  stats: 'Опыт 18 200 / 40 000 · ↑45 100 ↓12 300 · кэш 1 200 000 · заказов: 31 · и ещё многое другое для проверки',
+}
+
+const art = (over: Partial<HudArt> = {}): HudArt => ({
+  theme: 'auto',
+  sign: 'senses',
+  isWorking: true,
+  isCasting: true,
+  vitality: 14,
+  ghostFrom: 30,
+  stamina: 72,
+  adrenaline: 2,
+  level: 5,
+  xpFraction: 0.4,
+  isLevelUp: true,
+  tips: { vitality: 'v', stamina: 's', adrenaline: 'a', level: 'l' },
+  line: questLine('active', LONG.title, 0, { key: 'senses', detail: LONG.detail }, 'ru'),
+  cast: { key: 'senses', name: 'Ведьмачье чутьё', detail: LONG.detail },
+  crowns: '1234,56',
+  sheet: { title: 'Ученик Каэр Морхена · Уровень 5', stats: LONG.stats },
+  ...over,
+})
+
+test('the drawing fills its frame and stays within the Svg limit', () => {
+  const B = bands({ hasStamina: true, crowns: '1234,56' })
+  const svg = hudSvg(B, art())
+  // No viewBox: one unit is one pixel at any frame width, and the drawing takes the frame's width.
+  expect(svg).toContain(`class="hud" width="${MAX_W}" height="${H}">`)
+  expect(svg).not.toContain('viewBox="0 0')
+  expect(svg).toContain(`.hud{display:block;width:100%;max-width:${MAX_W}px;height:${H}px;overflow:hidden}`)
+  // The plate's tip and the crowns are drawn from the right edge.
+  expect(svg).toContain('<svg class="anchor" x="100%" y="0" overflow="visible">')
+  // Long texts cut at every band still fit the limit an Svg's source has.
+  expect(svg.length < 131072).toBe(true)
+  // Each band's vitality track is drawn on its box, its 1px edge on half pixels.
+  for (const { L } of B) expect(svg).toContain(`<rect x="${L.vit.x + 0.5}" y="${L.vit.y + 0.5}" width="${L.vit.w - 1}" height="${L.vit.h - 1}"`)
+  // A title is cut to its band's room, the drawn letter spacing counted.
+  const L = B.find(b => b.L.quest !== null)!.L
+  const cut = fitText(LONG.title, L.quest!.right - L.quest!.x, t => textWidth(t, SIZE.title, TITLE_SPACING))
+  expect(textWidth(cut, SIZE.title, TITLE_SPACING) <= L.quest!.right - L.quest!.x).toBe(true)
+  expect(svg).toContain(`>${cut}</text>`)
 })
