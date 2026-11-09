@@ -9,7 +9,7 @@
 // (layout.ts `bands`), the frame's own width picking one with a CSS media query. Nothing in it
 // depends on the band width the engine reports, so a redraw never moves or drops a part.
 import type { SignKey } from '../types'
-import { TITLE_FAMILY, TITLE_WOFF2 } from './font'
+import { TITLE_FONT_STACK } from './font'
 import {
   H,
   MAX_W,
@@ -144,8 +144,6 @@ const vars = (p: Palette) =>
     .map(([k, v]) => `--${k}:${v}`)
     .join(';')
 
-const FONT_FACE = `@font-face{font-family:'${TITLE_FAMILY}';src:url(data:font/woff2;base64,${TITLE_WOFF2}) format('woff2')}`
-
 // The motions' lengths, in ms; a redraw starts each where the last drawing had it (see `phase`).
 export const MOTION_MS = { shake: 900, breathe: 2400, drainAfter: 450, drain: 800, pulse: 1200, glow: 1000 } as const
 
@@ -162,7 +160,8 @@ const MOTION =
   `.levelup{animation:whud-glow ${MOTION_MS.glow}ms ease-in-out infinite}` +
   '@media (prefers-reduced-motion:reduce){*{animation:none!important}.low,.ghost{opacity:0}}'
 
-const TITLE_FONT = `'${TITLE_FAMILY}', 'Hoefler Text', Baskerville, 'PT Serif', Georgia, serif`
+// A system face, never a web font: the desktop app's page policy blocks fonts inside the HUD's frame.
+const TITLE_FONT = TITLE_FONT_STACK
 const MONO_FONT = "'SF Mono', Menlo, ui-monospace, monospace"
 const NUMS = 'font-variant-numeric:lining-nums tabular-nums'
 
@@ -206,7 +205,6 @@ const isDanger = (a: CharacterArt) => a.fx !== undefined && clamp(a.vitality, 0,
 
 const style = (theme: Theme, ranges: string, clock?: Clock, fx = '') =>
   '<style>' +
-  FONT_FACE +
   (theme === 'auto'
     ? `svg{${vars(DARK)}}@media (prefers-color-scheme:light){svg{${vars(LIGHT)}}}`
     : `svg{${vars(theme === 'light' ? LIGHT : DARK)}}`) +
@@ -411,6 +409,8 @@ const badge = (L: Layout, a: CharacterArt) => {
   const ringPath = `M${cx} ${cy - ring}L${cx + ring} ${cy}L${cx} ${cy + ring}L${cx - ring} ${cy}Z`
   const xp = r1(clamp(a.xpFraction, 0, 1) * 100)
   const pop = badgeMotion(a.fx)
+  // More figures, a smaller size, so the level stays inside the inner diamond.
+  const levelSize = a.level >= 100 ? 8 : a.level >= 10 ? 10 : SIZE.level
   return (
     raysOf(L, a.fx) +
     `<g${pop ? ` style="${pop}"` : ''}><title>${esc(a.tips.level)}</title>` +
@@ -422,7 +422,7 @@ const badge = (L: Layout, a: CharacterArt) => {
       ? `<path class="levelup" d="${ringPath}" fill="none" stroke="${GOLD_HI}" stroke-width="2" stroke-linejoin="round" filter="url(#glow)"/>`
       : '') +
     `<path d="${diamond(cx, cy, inner)}" stroke="url(#gold)" stroke-width="1.2" ${fill('badge')}/>` +
-    `<text class="tt" x="${cx}" y="${baselineAt(cy, SIZE.level)}" text-anchor="middle" font-size="${a.level >= 10 ? 11 : SIZE.level}" ${fill('badge-num', NUMS)}>${a.level}</text>` +
+    `<text class="tt" x="${cx}" y="${baselineAt(cy, levelSize)}" text-anchor="middle" font-size="${levelSize}" ${fill('badge-num', NUMS)}>${a.level}</text>` +
     `</g>` +
     ringFlashOf(L, a.fx)
   )

@@ -28,7 +28,7 @@ const band = (isWorking: boolean) => ({
 
 // The engine beneath the plugin: a clock, a store kept in a map the test reads, a session on show
 // on the desktop, a player that records each clip, and tools that fail when `failing` matches.
-const world = (on: On, o: { store?: Record<string, unknown>; failing?: RegExp; id?: () => string; muted?: string[] | null } = {}) => {
+const world = (on: On, o: { store?: Record<string, unknown>; failing?: RegExp; id?: () => string; muted?: string[] | null; own?: string[] } = {}) => {
   const clock = mock.clock(on, { now: T0 })
   // Every kind of sound turned on, as a person may have: `muted: null` leaves the HUD's default.
   const sound = o.muted === null ? {} : { 'sound:v1:muted': o.muted ?? [] }
@@ -55,6 +55,10 @@ const world = (on: On, o: { store?: Record<string, unknown>; failing?: RegExp; i
     sounds.push({ asset: (e.clip as { asset: string }).asset, gain: e.gain })
     return { value: undefined }
   })
+  // The folder of one's own clips holds what the test names, and nothing on the machine running it.
+  on('fs.list', (_, e) => ({
+    value: e.path.endsWith('/sounds/local') ? (o.own ?? []).map(name => ({ name, kind: 'file' as const, size: 1, mtimeMs: 0, isLink: false })) : [],
+  }))
   on('session.id', () => ({ value: o.id?.() ?? 's-now' }))
   on('session.surfaces', () => ({ value: ['desktop'] }))
   on('command.register', () => ({ value: { command: 'hud' } }))
@@ -200,6 +204,15 @@ test('a quiet HUD plays softer, and one turned off plays nothing', { options: { 
   await $.tool.call({ tool: 'Bash', command: 'ls' })
   await complete($, 't1')
   expect(w.sounds.map(s => s.gain)).toEqual([0.35 * 0.8, 0.35])
+})
+
+test("a clip of one's own in sounds/local plays in place of the HUD's", async ($, on) => {
+  const w = world(on, { muted: null, own: ['quest-done.mp3', 'notes.txt', 'level-up.ogg', 'igni'] })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await quest($, 'fix the login redirect bug', 't1')
+  await complete($, 't1')
+  await w.clock.advance(6000)
+  expect(w.sounds.map(s => s.asset)).toEqual(['sounds/local/quest-done.mp3'])
 })
 
 test('a HUD with its sound off plays nothing', { options: { sound: 'off' } }, async ($, on) => {

@@ -1,3 +1,6 @@
 # Written by Claude Code at each load
 .claude-plugin/types/
 tsconfig.json
+
+# Sounds of your own (sounds/local/quest-done.mp3): they stay on this computer
+sounds/local/

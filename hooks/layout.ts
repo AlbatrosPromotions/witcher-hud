@@ -3,8 +3,8 @@
 // - every group is centred on the midline, MID;
 // - groups along the row are GAP apart, edge to edge;
 // - fills, tracks and the seam between the drawings sit on whole pixels, 1px strokes on half pixels;
-// - text is measured with the embedded title font's own advances, then cut to the room it has.
-import { TITLE_ADVANCE, TITLE_CHARS, TITLE_METRICS } from './font'
+// - text is measured with the system Palatino's own advances, then cut to the room it has.
+import { TITLE_ADVANCE, TITLE_ADVANCE_BOLD, TITLE_CHARS, TITLE_METRICS } from './font'
 
 export const H = 44
 export const MID = 22
@@ -20,7 +20,8 @@ export const MIN_W = 240
 // The desktop drawing is laid out at every STEP of width, and where a tier changes.
 export const STEP = 16
 
-export const SIZE = { title: 14, body: 12.5, vit: 13, sta: 10.5, level: 13, sign: 9.5, mono: 10.5, crowns: 12.5 } as const
+// Palatino's x-height is larger than a display face's, so its sizes are a little smaller and its rows breathe.
+export const SIZE = { title: 13, body: 11.5, vit: 12, sta: 9.5, level: 12, sign: 9, mono: 10, crowns: 11.5 } as const
 export const SIGN_SPACING = 1
 // The quest's title is drawn a little spaced, and measured so.
 export const TITLE_SPACING = 0.2
@@ -29,14 +30,24 @@ const MONO_EM = 0.61
 
 export type Box = { x: number; y: number; w: number; h: number }
 
-const ADVANCE = new Map<string, number>(Array.from(TITLE_CHARS, (ch, i) => [ch, TITLE_ADVANCE[i] ?? 600]))
-// A character the subset lacks falls back to a system serif: counted wide.
-const FALLBACK_ADVANCE = 620
+const tableOf = (advances: readonly number[]) => new Map<string, number>(Array.from(TITLE_CHARS, (ch, i) => [ch, advances[i] ?? 700]))
+const ADVANCE = tableOf(TITLE_ADVANCE)
+const ADVANCE_BOLD = tableOf(TITLE_ADVANCE_BOLD)
 
-export const textWidth = (s: string, size: number, spacing = 0) => {
+// A character Palatino lacks is drawn from another font: counted wide, an ideograph a full em, an emoji more.
+const fallbackAdvance = (ch: string) => {
+  const code = ch.codePointAt(0) ?? 0
+  return code > 0xffff ? 1250 : code >= 0x2e80 ? 1000 : code === 0x202f ? 250 : 700
+}
+
+// A 2% margin, for Windows' Palatino Linotype, whose widths were not measured here.
+const MARGIN = 1.02
+
+export const textWidth = (s: string, size: number, spacing = 0, isBold = false) => {
+  const table = isBold ? ADVANCE_BOLD : ADVANCE
   let em = 0
-  for (const ch of s) em += ADVANCE.get(ch) ?? FALLBACK_ADVANCE
-  return (em / 1000) * size + spacing * [...s].length
+  for (const ch of s) em += table.get(ch) ?? fallbackAdvance(ch)
+  return (em / 1000) * size * MARGIN + spacing * [...s].length
 }
 
 export const monoWidth = (s: string, size: number) => [...s].length * MONO_EM * size
@@ -75,9 +86,10 @@ export const fitText = (s: string, room: number, measure: (t: string) => number)
   return (space > cut.length * 0.6 ? cut.slice(0, space) : cut).trimEnd() + '…'
 }
 
-// Text rows of the quest and the sheet: a title above, a line below, mirrored about MID.
-export const ROW_TITLE = MID - 7
-export const ROW_LINE = MID + 7
+// Text rows of the quest and the sheet, as the centres of their capitals: a title above, a line below.
+// Both sit half a pixel above MID's mirror, so the line's descenders keep clear of the plate's lower edge.
+export const ROW_TITLE = MID - 7.5
+export const ROW_LINE = MID + 6.5
 
 export type LayoutInput = {
   width: number

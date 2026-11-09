@@ -6,7 +6,7 @@ Every prompt is a quest, every tool a sign, every token experience.
 </p>
 
 <p align="center">
-<img alt="Version 4.0.0" src="https://img.shields.io/badge/version-4.0.0-b08d57">
+<img alt="Version 4.0.1" src="https://img.shields.io/badge/version-4.0.1-b08d57">
 <img alt="A Claude Code plugin" src="https://img.shields.io/badge/Claude_Code-plugin-d97757">
 <img alt="English and Russian" src="https://img.shields.io/badge/speaks-English_%7C_%D0%A0%D1%83%D1%81%D1%81%D0%BA%D0%B8%D0%B9-6e6a5e">
 </p>
@@ -34,7 +34,7 @@ The HUD sits in one slim row above the prompt and plays the session as a hunt. I
  ▲ ▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂ 66%  ◆◆◇  Lv 5 ━━────  ⛁ 1.87  Fix the login redirect ◆ Igni: npm test
 ```
 
-It speaks English or Russian. Current version: 4.0.0.
+It speaks English or Russian. Current version: 4.0.1.
 
 ## Install
 
@@ -276,6 +276,14 @@ The names are the ones in the two tables above.
 - **They play only where the HUD is on screen**, never in a headless run (`claude -p`).
 - **They are original**: short clips synthesized from oscillators and noise, kept in [`sounds/`](sounds) as WAV files. No sound from the games is used.
 
+### A sound of your own
+
+Put an MP3, WAV, M4A or AIFF file in `sounds/local/` inside the plugin's folder, named after the sound it replaces, and the HUD plays it instead. For example, `sounds/local/quest-done.mp3` plays when Claude finishes its work. It is picked up when a session starts, and the kinds turned on or off still apply.
+
+The names: `quest-done`, `quest-failed`, `level-up`, `monster`, `slain`, `trophy`, `meditate`, `restored`, `danger`, and the signs `igni`, `aard`, `quen`, `yrden`, `axii`, `senses`.
+
+git ignores `sounds/local/`, so your clips stay on your computer: an update never removes them, and they are never published with the plugin.
+
 ## Career
 
 The level, the bestiary and the trophies last. The HUD keeps them on this computer in Claude Code's store for plugins and adds every session to them. Each session keeps its own record, and `/clear` starts a new one, so sessions running side by side never overwrite each other. Headless runs (`claude -p`) count for nothing.
@@ -319,7 +327,7 @@ Token counts start when the plugin loads; cost, context and stamina cover the wh
 
 ## Credits
 
-The desktop HUD's lettering is a subset of [Forum](https://fonts.google.com/specimen/Forum) by Denis Masharov, under the SIL Open Font License 1.1 (`fonts/OFL.txt`), embedded under the name "WHud Title" as that license asks of a modified copy.
+The desktop HUD's lettering is the system's own Palatino (Palatino Linotype on Windows); no font ships with the plugin. The desktop app's page policy blocks web fonts inside the HUD's frame, so an embedded face would never load there.
 
 The sign glyphs, medallion, effects, monsters' lore, sounds and wording are original work in the spirit of the games; the sounds are synthesized from oscillators and noise, no recordings. No art, sound or text from the games is used. The Witcher is a trademark of CD PROJEKT S.A.; this is an unofficial fan project.
 
@@ -342,7 +350,7 @@ claude plugin test ./witcher-hud
 | `hooks/lore.ts` | The words in both languages, signs, levels and number formats. No engine calls, so tests and previews run it anywhere. |
 | `hooks/layout.ts` | The desktop HUD's geometry: one grid every box is placed on, centred on the midline with even gaps, laid out for each band of widths. |
 | `hooks/art.ts` | The desktop HUD as one SVG drawn from that layout: the character, the quest tracker and the character sheet, both themes. It fills its frame's width, each band's parts shown by a CSS media query. |
-| `hooks/font.ts` | The embedded title face (generated): the woff2 as base64 and each glyph's advance, so text is measured. |
+| `hooks/font.ts` | Palatino's measurements (generated): each character's advance, regular and bold, and the face's heights, so text is measured as it is drawn. |
 | `hooks/terminal-hud.ts` | The terminal row, animated on the terminal's own frame clock. |
 | `sounds/` | The clips the HUD plays: 16-bit mono WAV. |
 | `media/` | This README's pictures, drawn by `hooks/art.ts` at twice the size in both themes; the first is an animated PNG. |
@@ -357,6 +365,7 @@ Claude Code writes `.claude-plugin/types/` and `tsconfig.json` each time it load
 
 ## Versions
 
+- **4.0.1** The desktop HUD's words no longer run together. The desktop app blocks web fonts inside the HUD, so the embedded face never loaded and a wider fallback was drawn over widths measured for it; the HUD now draws with the system's Palatino and measures with its own widths. A two-digit level sits in the middle of its badge. A sound of your own: a clip in `sounds/local/`, named after the sound it replaces, plays instead and stays on your computer.
 - **4.0.0** The hunt comes alive and lasts. Moments play out on the desktop plate: a quest completed or failed, a level up, a monster met when a tool fails and slain when it then succeeds, a trophy, meditation while `/compact` runs and the vitality it gives back; with each sign's own burst, a hit flash, a low-vitality glow and the time of day. Sounds for the signs and the moments, only a quest's end on at first: `/hud sound` opens their settings, where each kind (or each sign) turns off on its own, and `/hud sound on|quiet|off` sets the volume. A career kept across sessions: the level counts all your experience on a new curve (250,000 XP to level 2, ten titles up to Grandmaster of the Wolf at level 40), a bestiary of eleven monsters, eighteen trophies, and `/hud journal`, a pane with the session's quests, the bestiary, the trophies and the signs. A subagent's prompt no longer renames the quest. The README shows it all in pictures.
 
 <details>

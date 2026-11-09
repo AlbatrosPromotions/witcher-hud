@@ -20,13 +20,19 @@ import {
   TIP,
   TITLE_SPACING,
   bands,
+  baselineAt,
+  capHeight,
   fitText,
   layout,
   monoWidth,
   textWidth,
 } from '../hooks/layout'
 import type { Box, Layout } from '../hooks/layout'
-import { questLine } from '../hooks/lore'
+import { TITLE_FONT_STACK, TITLE_METRICS } from '../hooks/font'
+import { BANNER_MS } from '../hooks/fx'
+import { SIGNS, questLine, signName } from '../hooks/lore'
+import type { Lang } from '../hooks/lore'
+import type { SignKey } from '../types'
 
 const WIDTHS = Array.from({ length: 140 }, (_, i) => 240 + i * 7)
 const CROWNS = ['1.87', '1234,56', null]
@@ -75,8 +81,9 @@ test('every group is centred on the midline', () => {
     expect(L.pips.cys[0] - L.pips.cys[1]).toBe(L.pips.cys[1] - L.pips.cys[2])
     expect(L.pips.cys[1]).toBe(MID)
   })
-  // The quest's two rows mirror each other, and the glyph sits on the lower one.
-  expect(MID - ROW_TITLE).toBe(ROW_LINE - MID)
+  // The quest's two rows sit about the midline, half a pixel up so descenders keep off the plate's edge,
+  // and the glyph sits on the lower one.
+  expect((ROW_TITLE + ROW_LINE) / 2).toBe(MID - 0.5)
   const L = layout({ width: 800, hasStamina: true, crowns: '1.87' })
   expect(centreY(L.quest!.glyph)).toBe(ROW_LINE)
 })
@@ -267,4 +274,82 @@ test('the drawing fills its frame and stays within the Svg limit', () => {
   const cut = fitText(LONG.title, L.quest!.right - L.quest!.x, t => textWidth(t, SIZE.title, TITLE_SPACING))
   expect(textWidth(cut, SIZE.title, TITLE_SPACING) <= L.quest!.right - L.quest!.x).toBe(true)
   expect(svg).toContain(`>${cut}</text>`)
+})
+
+// The drawn runs of text, each with what it is measured by: its face, place, size and spacing.
+type Run = { face: string; x: number; y: number; size: number; spacing: number; isBold: boolean; isMiddle: boolean; body: string }
+const attrOf = (attrs: string, name: string) => new RegExp(`(?:^|\\s)${name}="([^"]*)"`).exec(attrs)?.[1]
+const unesc = (s: string) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&')
+const runsOf = (svg: string): Run[] =>
+  [...svg.matchAll(/<text ([^>]*)>([^<]*)<\/text>/g)].map(([, attrs, body]) => ({
+    face: attrOf(attrs!, 'class') ?? '',
+    x: Number(attrOf(attrs!, 'x')),
+    y: Number(attrOf(attrs!, 'y')),
+    size: Number(attrOf(attrs!, 'font-size')),
+    spacing: Number(attrOf(attrs!, 'letter-spacing') ?? 0),
+    isBold: (attrOf(attrs!, 'style') ?? '').includes('font-weight:700'),
+    isMiddle: attrOf(attrs!, 'text-anchor') === 'middle',
+    body: unesc(body!),
+  }))
+
+// The desktop app's page policy blocks fonts inside the HUD's frame, so a web font never loads
+// there; a fallback face drawn over widths measured for another ran words together (2026-11-09).
+test('text is drawn in the system face it is measured with, never a web font', () => {
+  const svg = hudSvg(bands({ hasStamina: true, crowns: '1234,56' }), art())
+  expect(svg).not.toContain('@font-face')
+  expect(svg).not.toContain('url(data:font')
+  expect(TITLE_FONT_STACK.startsWith("'Palatino Linotype', Palatino,")).toBe(true)
+  expect(svg).toContain(`.tt{font-family:${TITLE_FONT_STACK}}`)
+})
+
+test("a sign's detail starts clear of its name, each measured as it is drawn", () => {
+  // One band at a time, so its row holds one name and one detail.
+  const B = bands({ hasStamina: true, crowns: '1234,56' }).filter(b => b.L.quest !== null)
+  for (const lang of ['en', 'ru'] as Lang[])
+    for (const key of Object.keys(SIGNS) as SignKey[]) {
+      const name = signName(key, lang)
+      const a = art({ sign: key, line: questLine('active', LONG.title, 0, { key, detail: LONG.detail }, lang), cast: { key, name, detail: LONG.detail } })
+      for (const band of B) {
+        const runs = runsOf(hudSvg([{ ...band, lo: 0, hi: Infinity }], a))
+        const n = runs.filter(r => r.body === name.toUpperCase())
+        const d = runs.filter(r => r.face === 'tm')
+        expect(n.length === 1 && d.length === 1).toBe(true)
+        // x is drawn to a tenth of a pixel.
+        const gap = d[0]!.x - (n[0]!.x + textWidth(n[0]!.body, n[0]!.size, n[0]!.spacing, n[0]!.isBold))
+        if (gap < 5.9) throw new Error(`${lang} ${key} at ${band.lo}px: ${name} leaves ${gap.toFixed(2)}px before its detail`)
+      }
+    }
+})
+
+test("the quest's rows keep clear of each other and of the plate's edges", () => {
+  const M = TITLE_METRICS
+  const B = bands({ hasStamina: true, crowns: '1234,56' })
+  const done = { kind: 'quest-done' as const, at: 0, ms: BANNER_MS['quest-done'], title: 'Задание выполнено', line: 'Почини вход', xp: '+48,2 тыс. опыта' }
+  const fx = { now: 100, spell: null, hit: null, banners: [done], meditating: null, period: 'day' as const }
+  for (const svg of [hudSvg(B, art()), hudSvg(B, art({ cast: null, line: questLine('idle', '', 0, null, 'ru') })), hudSvg(B, art({ fx }))]) {
+    const runs = runsOf(svg)
+    const titles = runs.filter(r => r.y === baselineAt(ROW_TITLE, r.size))
+    const lines = runs.filter(r => r.y === baselineAt(ROW_LINE, r.size))
+    expect(titles.length > 0 && lines.length > 0).toBe(true)
+    // Accents over capitals (Й, Ё) reach the face's ascent; descenders its descent.
+    const titleTop = Math.min(...titles.map(r => r.y - (M.ascent / 1000) * r.size))
+    const titleBottom = Math.max(...titles.map(r => r.y + (M.descent / 1000) * r.size))
+    const lineTop = Math.min(...lines.map(r => r.y - capHeight(r.size)))
+    const lineBottom = Math.max(...lines.map(r => r.y + (M.descent / 1000) * r.size))
+    expect(titleTop - PLATE_TOP >= 1.5).toBe(true)
+    expect(lineTop - titleBottom >= 1.5).toBe(true)
+    expect(PLATE_BOTTOM - lineBottom >= 1.5).toBe(true)
+  }
+})
+
+test("the level stays centred inside the badge's inner diamond", () => {
+  const L = layout({ width: 760, hasStamina: true, crowns: null })
+  for (const level of [1, 9, 10, 37, 99, 100, 999]) {
+    const run = runsOf(hudSvg([{ lo: 0, hi: Infinity, L }], art({ level }))).find(r => r.isMiddle && r.body === String(level))!
+    const halfW = textWidth(run.body, run.size) / 2
+    const halfH = capHeight(run.size) / 2
+    expect(near(run.y - halfH, L.badge.cy)).toBe(true)
+    // The figures' box has its corners inside the diamond, clear of its 1.2px stroke.
+    if (halfW + halfH > L.badge.inner - 1) throw new Error(`level ${level} reaches the badge's edge`)
+  }
 })

@@ -104,8 +104,9 @@ test('the art follows the app, or keeps the theme it is given', () => {
   expect(light).toContain('svg{--plate-top:#FBF6EA')
   expect(light).not.toContain('prefers-color-scheme')
   expect(draw({ theme: 'dark' })).not.toContain('#FBF6EA')
-  // The title face is embedded, so the HUD reads the same on every machine.
-  expect(auto).toContain("@font-face{font-family:'WHud Title';src:url(data:font/woff2;base64,")
+  // The title face is the system Palatino: the app's page policy blocks web fonts in the HUD's frame.
+  expect(auto).not.toContain('@font-face')
+  expect(auto).toContain(".tt{font-family:'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif}")
   // Each bar and mark answers the pointer with its numbers.
   expect(auto).toContain('<title>Vitality 66%</title>')
   const cast = draw({ line: questLine('active', 'Fix it', 0, { key: 'igni', detail: 'npm test' }), cast: { key: 'igni', name: 'Igni', detail: 'npm test' } })
@@ -323,8 +324,8 @@ test('the HUD speaks Russian when its option says so', { options: { language: 'r
   const svgs = await desktop.findAll({ type: 'Svg' })
   expect(String(svgs[0]?.props.alt)).toContain('Жизненная сила 100%')
   expect(String(svgs[0]?.props.alt)).toContain('Почини вход в систему: Игни: npm test')
-  // The embedded title face carries Cyrillic.
-  expect(String(svgs[0]?.props.source)).toContain(".tt{font-family:'WHud Title'")
+  // Palatino carries Cyrillic, and its widths are the ones the HUD measures with.
+  expect(String(svgs[0]?.props.source)).toContain(".tt{font-family:'Palatino Linotype', Palatino")
   expect(String(svgs[0]?.props.source)).toContain('>ИГНИ</text>')
 
   const terminal = await $.ui.mount({ plugin: 'witcher-hud', surface: 'terminal', component: 'AbovePrompt', props: band(true) })

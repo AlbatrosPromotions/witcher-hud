@@ -225,6 +225,27 @@ let heard = { at: -Infinity, priority: 0 }
 let lastSign = { key: null as SignKey | null, at: -Infinity }
 let loading: Promise<void> | null = null
 
+// Clips of the person's own in sounds/local/, each named after the sound it takes the place of
+// (quest-done.mp3). git ignores that folder, so a clip someone adds stays on their computer.
+const OWN_DIR = 'sounds/local'
+const OWN_TYPES = ['mp3', 'wav', 'm4a', 'aiff']
+let ownClips = new Map<string, string>()
+const loadOwnClips = async ($: EngineInterface) => {
+  const found = new Map<string, string>()
+  try {
+    for (const entry of await $.fs.list(`${$.plugin.root}/${OWN_DIR}`)) {
+      const dot = entry.name.lastIndexOf('.')
+      const sound = entry.name.slice(0, dot)
+      if (entry.kind === 'file' && dot > 0 && sound in GROUP_OF && OWN_TYPES.includes(entry.name.slice(dot + 1).toLowerCase()))
+        found.set(sound, `${OWN_DIR}/${entry.name}`)
+    }
+  } catch {
+    // No folder of one's own: the HUD's clips.
+  }
+  ownClips = found
+}
+const clipOf = (sound: Sound) => ({ asset: ownClips.get(sound) ?? `sounds/${sound}.wav` })
+
 // A clip plays where the session is on show, never in a headless run; one that cannot play is silence.
 const play = async ($: EngineInterface, sound: Sound) => {
   const loudness = config.loudness
@@ -240,7 +261,7 @@ const play = async ($: EngineInterface, sound: Sound) => {
     }
     if ((await $.session.surfaces()).length === 0) return
     heard = { at: now, priority }
-    await $.audio.play({ asset: `sounds/${sound}.wav` }, { gain: loudness * (isSignKey(sound) ? SIGN_GAIN : 1) })
+    await $.audio.play(clipOf(sound), { gain: loudness * (isSignKey(sound) ? SIGN_GAIN : 1) })
   } catch {
     // No player, no surface, no sound.
   }
@@ -251,7 +272,7 @@ const play = async ($: EngineInterface, sound: Sound) => {
 const listen = async ($: EngineInterface, sound: Sound) => {
   try {
     const loudness = config.loudness || LOUDNESS.quiet
-    await $.audio.play({ asset: `sounds/${sound}.wav` }, { gain: loudness * (isSignKey(sound) ? SIGN_GAIN : 1) })
+    await $.audio.play(clipOf(sound), { gain: loudness * (isSignKey(sound) ? SIGN_GAIN : 1) })
   } catch {
     // No player, no sound.
   }
@@ -484,6 +505,7 @@ export const register: Register = (on, options) => {
     })
     await ensureCareer($)
     await loadMuted($)
+    await loadOwnClips($)
     return next(e)
   })
 

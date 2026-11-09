@@ -538,13 +538,13 @@ const extrasOf = (L: Layout, b: Banner, d: number) => {
     case 'quest-done': {
       if (b.xp === undefined) return shine(L, d + 150)
       // The experience shows after the line's words, then flies into the level badge.
-      const chipW = textWidth(b.xp, 11)
+      const chipW = textWidth(b.xp, 10.5, 0, true)
       const slot = after(L, b)
       const row = slot.row === 'line' ? ROW_LINE : ROW_TITLE
       if (slot.x + chipW > slot.end) return shine(L, d + 150)
       // The figure pops up where the words end; three motes of it fly over them into the badge.
       const chip =
-        `<text class="tt fx" x="${r1(slot.x)}" y="${baselineAt(row, 11)}" font-size="11" filter="url(#glow)" style="fill:var(--fx-gold);font-weight:700;transform-box:fill-box;transform-origin:left center;${once('whud-chip', 1900, d + 300)}">${esc(b.xp)}</text>`
+        `<text class="tt fx" x="${r1(slot.x)}" y="${baselineAt(row, 10.5)}" font-size="10.5" filter="url(#glow)" style="fill:var(--fx-gold);font-weight:700;transform-box:fill-box;transform-origin:left center;${once('whud-chip', 1900, d + 300)}">${esc(b.xp)}</text>`
       const sx = slot.x + 6
       const dx = L.badge.cx - sx
       const dy = L.badge.cy - row
