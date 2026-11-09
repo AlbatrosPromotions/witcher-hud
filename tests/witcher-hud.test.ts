@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import { hudSvg } from '../hooks/art'
 import type { HudArt } from '../hooks/art'
-import { bands } from '../hooks/layout'
+import { MAX_W, bands } from '../hooks/layout'
 import { clip, detailOf, durationRu, levelOf, money, pastWord, questLine, questTitle, signOf, spinnerWord } from '../hooks/lore'
 
 const usage = (input: number, output: number) => ({
@@ -151,14 +151,14 @@ test('a quest runs through the HUD on both surfaces', async ($, on) => {
 
   const desktop = await $.ui.mount({ plugin: 'witcher-hud', surface: 'desktop', component: 'AbovePrompt', props: band(true) })
   const svgs = await desktop.findAll({ type: 'Svg' })
-  // One drawing: the character, the quest, and the sheet the pointer on the character shows in its place.
+  // The newest frame is the last; one drawing: the character, the quest, and the sheet the pointer on the character shows in its place.
   expect(svgs.length).toBe(1)
-  expect(String(svgs[0]?.props.alt)).toContain('adrenaline 1 of 3')
-  expect(svgs[0]?.props.isInteractive).toBe(true)
-  expect(String(svgs[0]?.props.alt)).toContain('Fix the login redirect bug: Igni: npm test -- auth')
-  expect(String(svgs[0]?.props.source)).toContain('>Survivor of the Grasses · Level 2</text>')
+  expect(String(svgs.at(-1)?.props.alt)).toContain('adrenaline 1 of 3')
+  expect(svgs.at(-1)?.props.isInteractive).toBe(true)
+  expect(String(svgs.at(-1)?.props.alt)).toContain('Fix the login redirect bug: Igni: npm test -- auth')
+  expect(String(svgs.at(-1)?.props.source)).toContain('>Survivor of the Grasses · Level 2</text>')
   // The sign was just cast: the medallion shakes once.
-  expect(String(svgs[0]?.props.source)).toContain('class="shake"')
+  expect(String(svgs.at(-1)?.props.source)).toContain('class="shake"')
 
   const terminal = await $.ui.mount({ plugin: 'witcher-hud', surface: 'terminal', component: 'AbovePrompt', props: band(true) })
   expect(await terminal.find({ type: 'Text', text: 'Igni: npm test -- auth', in: 'witcher-hud' })).toBeDefined()
@@ -170,14 +170,14 @@ test('a quest runs through the HUD on both surfaces', async ($, on) => {
   await $.session.measure({ context: { window: 200000, tokens: 80000, percent: 40 }, rateLimits: [], cost: { usd: 0.5 }, changed: ['context'] })
   const hit = await $.ui.mount({ plugin: 'witcher-hud', surface: 'desktop', component: 'AbovePrompt', props: band(true) })
   const hitSvg = await hit.findAll({ type: 'Svg' })
-  expect(String(hitSvg[0]?.props.alt)).toContain('adrenaline 0 of 3')
+  expect(String(hitSvg.at(-1)?.props.alt)).toContain('adrenaline 0 of 3')
 
   await $.session.measure({ context: { window: 200000, tokens: 150000, percent: 75 }, rateLimits: [], cost: { usd: 0.9 }, changed: ['context'] })
   const drained = await $.ui.mount({ plugin: 'witcher-hud', surface: 'desktop', component: 'AbovePrompt', props: band(true) })
-  expect(String((await drained.findAll({ type: 'Svg' }))[0]?.props.source)).toContain('class="ghost"')
+  expect(String((await drained.findAll({ type: 'Svg' })).at(-1)?.props.source)).toContain('class="ghost"')
   await clock.advance(2000)
   const settled = await $.ui.mount({ plugin: 'witcher-hud', surface: 'desktop', component: 'AbovePrompt', props: band(true) })
-  const settledSource = String((await settled.findAll({ type: 'Svg' }))[0]?.props.source)
+  const settledSource = String((await settled.findAll({ type: 'Svg' })).at(-1)?.props.source)
   expect(settledSource).not.toContain('class="ghost"')
   // Long after the cast, the medallion only breathes.
   expect(settledSource).not.toContain('class="shake"')
@@ -186,13 +186,13 @@ test('a quest runs through the HUD on both surfaces', async ($, on) => {
   await $.turn.complete({ answer: 'Done.', durationMs: 4000, isAborted: false, turnId: 't1', reason: 'answer' })
   const done = await $.ui.mount({ plugin: 'witcher-hud', surface: 'desktop', component: 'AbovePrompt', props: band(false) })
   const doneSvgs = await done.findAll({ type: 'Svg' })
-  expect(String(doneSvgs[0]?.props.alt)).toContain(', Fix the login redirect bug: Quest completed · +5.3k XP')
-  expect(String(doneSvgs[0]?.props.source)).not.toContain('class="aura"')
+  expect(String(doneSvgs.at(-1)?.props.alt)).toContain(', Fix the login redirect bug: Quest completed · +5.3k XP')
+  expect(String(doneSvgs.at(-1)?.props.source)).not.toContain('class="aura"')
 })
 
 // A redraw must not move or drop part of the HUD: the band's reported columns (which may pass
 // through 0 or a stale count as the app lays out) never reach the drawing, and the tree keeps its shape.
-test('the desktop band is one drawing that the reported width never changes', async ($, on) => {
+test('the desktop band is one drawing, its frame asking for the full width', async ($, on) => {
   mock.clock(on)
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
   on('tool.call', () => ({ result: 'ok' as never }))
@@ -203,12 +203,65 @@ test('the desktop band is one drawing that the reported width never changes', as
     const desktop = await $.ui.mount({ plugin: 'witcher-hud', surface: 'desktop', component: 'AbovePrompt', props: band(true, columns) })
     const svgs = await desktop.findAll({ type: 'Svg' })
     expect(svgs.length).toBe(1)
-    // No width: the frame takes the drawing's own up to the band, and the drawing fills the frame.
-    expect(svgs[0]?.props.width).toBe(undefined)
+    // A frame given no width is the browser's 300px, the narrowest tier: the frame always asks for
+    // MAX_W, and the band's max-width holds it to the band.
+    expect(svgs[0]?.props.width).toBe(MAX_W)
     expect(svgs[0]?.props.isInteractive).toBe(true)
     drawn.push(JSON.stringify(svgs[0]?.props))
   }
   expect(new Set(drawn).size).toBe(1)
+})
+
+// An update must not blank the HUD: the frame on show is a frame the desktop keeps (same props, same
+// place in the tree), and the new one lies over it until it has loaded, then takes its place.
+test('an update lays the new frame over the one on show, which stays untouched', async ($, on) => {
+  const clock = mock.clock(on, { now: 5000 })
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('tool.call', () => ({ result: 'ok' as never }))
+  await $.turn.start({ text: 'fix the login redirect bug', turnId: 't1' })
+  await $.tool.call({ tool: 'Bash', command: 'npm test' })
+  const frames = async () => {
+    const desktop = await $.ui.mount({ plugin: 'witcher-hud', surface: 'desktop', component: 'AbovePrompt', props: band(true) })
+    const boxes = await desktop.findAll({ type: 'Box' })
+    const svgs = await desktop.findAll({ type: 'Svg' })
+    return { svgs: svgs.map(n => n.props), absolute: boxes.filter(n => n.props.position === 'absolute').length }
+  }
+  const one = await frames()
+  expect(one.svgs.length).toBe(1)
+  expect(one.absolute).toBe(0)
+
+  await clock.advance(500)
+  await $.tool.call({ tool: 'Read', file_path: '/src/alpha.ts' })
+  const two = await frames()
+  expect(two.svgs.length).toBe(2)
+  expect(two.svgs[0]).toEqual(one.svgs[0])
+  expect(two.absolute).toBe(1)
+  expect(String(two.svgs[1]?.source)).toContain('alpha.ts')
+  // The new frame takes up the old one's motions where they stand, not from their start.
+  expect(String(two.svgs[1]?.source)).toMatch(/\.aura\{animation-delay:-\d+ms\}/)
+  expect(String(two.svgs[1]?.source)).toContain('.shake{animation-delay:-0ms}')
+
+  // A newer update while that frame still loads replaces it, over the same frame on show.
+  await clock.advance(100)
+  await $.tool.call({ tool: 'Read', file_path: '/src/beta.ts' })
+  const three = await frames()
+  expect(three.svgs.length).toBe(2)
+  expect(three.svgs[0]).toEqual(one.svgs[0])
+  expect(String(three.svgs[1]?.source)).toContain('beta.ts')
+
+  // Once it has loaded, a redraw takes the old frame away and keeps the new one as it is.
+  await clock.advance(1000)
+  const settled = await frames()
+  expect(settled.svgs).toEqual([three.svgs[1]])
+  expect(settled.absolute).toBe(0)
+  // A redraw with nothing new changes nothing.
+  expect((await frames()).svgs).toEqual(settled.svgs)
+
+  // The next update lays its frame over that one.
+  await $.tool.call({ tool: 'Read', file_path: '/src/gamma.ts' })
+  const four = await frames()
+  expect(four.svgs[0]).toEqual(three.svgs[1])
+  expect(String(four.svgs[1]?.source)).toContain('gamma.ts')
 })
 
 test('the spinner and the closing line are reworded', async ($, on) => {

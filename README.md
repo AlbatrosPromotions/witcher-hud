@@ -8,7 +8,7 @@ In the desktop app it is drawn on one plate: a medallion that shakes once as eac
  ▲ ▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂ 66%  ◆◆◇  Lv 5 ━━────  ⛁ 1.87  Fix the login redirect ◆ Igni: npm test
 ```
 
-It speaks English or Russian. Current version: 3.1.0.
+It speaks English or Russian. Current version: 3.1.1.
 
 ## Install
 
@@ -109,6 +109,7 @@ Claude Code writes `.claude-plugin/types/` and `tsconfig.json` each time it load
 
 ## Versions
 
+- **3.1.1** Fixes 3.1.0 on the desktop: the HUD's frame was given no width, and the app drew it at a browser's default 300px, so only the narrowest tier showed (the medallion, the bars and the level, without the quest or the crowns). The frame now asks for the full width and the band holds it to its own, so the HUD fills the band up to 960px. An update no longer blinks the HUD: the desktop draws an Svg in a frame that has to load, and a new drawing used to replace the old one and leave the band empty until it loaded. Now the new drawing is laid over the one on show, which stays untouched until the new one has had time to load, and only then takes its place. A redraw with nothing new keeps the frame as it is, and the medallion's breathing, the low-vitality pulse and the level-up glow carry on from where they were instead of starting over.
 - **3.1.0** The desktop HUD is one drawing that fills the band at any width: the plate reaches the right edge, the crowns stay at its end, and the quest's text is cut to the room it has, all read from the drawing's own width instead of a guess from the band's columns. Updates no longer blank the quest's half for a moment, and the title's letter spacing is counted when it is cut.
 - **3.0.0** The desktop HUD redrawn on one grid: one plate, the figures beside their bars, adrenaline as a column of pips, experience as a ring on the level badge, the sign's colour and a monospace target in the quest tracker, the crowns at the plate's end. A light parchment theme after the app's appearance and `/hud theme`, tooltips and a character sheet under the pointer, an embedded title face with Cyrillic, one shake per cast instead of a constant one, and stillness under reduce motion.
 - **2.1.1** The README and the marketplace listing brought up to date; the HUD itself is unchanged.

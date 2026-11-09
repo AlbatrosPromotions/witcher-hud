@@ -4,7 +4,7 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { Adrenaline, Ghost, Measure, Quest, QuestStatus, SignState, Totals } from '../types'
 import { hudSvg, themeOf } from './art'
 import type { HudArt, Theme } from './art'
-import { H, bands } from './layout'
+import { H, MAX_W, bands } from './layout'
 import type { Band } from './layout'
 import {
   GOLD,
@@ -43,6 +43,7 @@ const quest = atom({ plugin: 'witcher-hud', key: 'quest' } as const, IDLE)
 const adrenaline = atom({ plugin: 'witcher-hud', key: 'adrenaline' } as const, { streak: 0 } as Adrenaline)
 const levelUp = atom({ plugin: 'witcher-hud', key: 'levelUp' } as const, null as number | null)
 const isHidden = atom({ plugin: 'witcher-hud', key: 'isHidden' } as const, false)
+const settled = atom({ plugin: 'witcher-hud', key: 'settled' } as const, 0)
 
 const GHOST_MS = 1800
 const LEVEL_UP_MS = 4000
@@ -50,6 +51,10 @@ const LEVEL_UP_MS = 4000
 const CAST_MS = 900
 // An Svg's source is held to this many characters.
 const SVG_LIMIT = 131072
+// A new HUD frame is laid over the one on show while it loads; this long after, it has loaded, and
+// a redraw takes the old one away. A frame newer still, arriving before LOAD_MS, replaces it.
+const LOAD_MS = 400
+const SETTLE_MS = 700
 const THEMES: Theme[] = ['auto', 'dark', 'light']
 
 // A value an earlier version of the HUD kept in this session may have another shape.
@@ -89,10 +94,18 @@ const sheet = async ($: EngineInterface, lang: Lang) => {
   return [`${lv.title} · ${w.level} ${lv.level}`, ...rows.map(([label, value]) => label.padEnd(pad) + value)].join('\n')
 }
 
+// One drawing of the desktop HUD: what it shows (`key`), its source and alt text, and when it was made.
+type Frame = { key: string; source: string; alt: string; at: number }
+
 export const register: Register = (on, options) => {
   const lang = langOf(options.language)
   const theme = themeOf(options.theme)
   const words = WORDS[lang]
+  // The desktop draws an interactive Svg in a frame, and a new source is a new frame, blank until it
+  // loads: drawn in place of the old one, the HUD would blink on every update. So `base`, the frame on
+  // show, stays as it is, and a newer one, `top`, is laid over it until it has loaded.
+  let base: Frame | null = null
+  let top: Frame | null = null
 
   on('session.start', async ($, e, next) => {
     $.ui.status(undefined)
@@ -250,11 +263,14 @@ export const register: Register = (on, options) => {
     }
 
     const { Box, Svg } = $.ui.resolve(e)
+    // Read so that the redraw a new frame asks for takes the old one away.
+    await read($, settled)
+    const now = await $.clock.now()
     const n = (x: number) => fmt(x, lang)
     const w = words.sheet
     const crowns = usd === null ? null : money(usd, lang)
-    const castAt = s?.at
-    const isCasting = shown !== null && castAt !== undefined && (await $.clock.now()) - castAt < CAST_MS
+    const castAt = shown !== null && s?.at !== undefined ? s.at : null
+    const ghostAt = ghostFrom !== null && g !== null ? g.id : null
     const context = m.tokens !== undefined && m.window ? ` · ${w.context(n(m.tokens), n(m.window))}` : ''
     const tips = {
       vitality: `${w.vitality} ${vitality}%${context}`,
@@ -270,13 +286,10 @@ export const register: Register = (on, options) => {
       `${w.cache} ${n(t.cacheRead)}`,
       w.contracts(t.calls),
     ].join(' · ')
-    // One drawing for every width: it reads its own frame's width, so the band's reported columns
-    // (which a redraw may report in passing) never change what is drawn.
-    const source = fittedSvg(bands({ hasStamina: stamina !== null, crowns }), {
+    const shows = {
       theme,
       sign: shown,
       isWorking: e.props.isWorking,
-      isCasting,
       vitality,
       ghostFrom,
       stamina,
@@ -289,21 +302,58 @@ export const register: Register = (on, options) => {
       cast,
       crowns,
       sheet: { title: sheetTitle, stats: sheetStats },
-    })
-    const alt = [
-      `${words.alt.vitality} ${vitality}%`,
-      stamina === null ? '' : `${words.alt.stamina} ${Math.round(stamina)}%`,
-      words.alt.adrenaline(points),
-      `${words.alt.level} ${lv.level}`,
-      crowns === null ? '' : `${words.alt.crowns} ${crowns}`,
-      `${line.title}: ${line.objective}`,
-    ]
-      .filter(Boolean)
-      .join(', ')
-    // No width: the frame takes the drawing's own (MAX_W) up to the band's, and the drawing fills it.
+    }
+    // What the HUD shows, and the motions' starts: a redraw with the same key keeps its frame.
+    const key = JSON.stringify([shows, castAt, ghostAt])
+    const draw = (): Frame => {
+      // One drawing for every width: it reads its own frame's width, so the band's reported columns
+      // (which a redraw may report in passing) never change what is drawn.
+      const source = fittedSvg(bands({ hasStamina: stamina !== null, crowns }), {
+        ...shows,
+        isCasting: castAt !== null && now - castAt < CAST_MS,
+        clock: { now, castAt, ghostAt },
+      })
+      const alt = [
+        `${words.alt.vitality} ${vitality}%`,
+        stamina === null ? '' : `${words.alt.stamina} ${Math.round(stamina)}%`,
+        words.alt.adrenaline(points),
+        `${words.alt.level} ${lv.level}`,
+        crowns === null ? '' : `${words.alt.crowns} ${crowns}`,
+        `${line.title}: ${line.objective}`,
+      ]
+        .filter(Boolean)
+        .join(', ')
+      return { key, source, alt, at: now }
+    }
+    const newest = top ?? base
+    if (newest === null) base = draw()
+    else if (newest.key !== key) {
+      // A top frame this old has loaded and is on show; one younger is still loading, and the new
+      // one takes its place over the same base.
+      if (top !== null && now - top.at >= LOAD_MS) base = top
+      top = draw()
+      $.clock.after(SETTLE_MS + 50, () => void update($, settled, k => k + 1))
+    } else if (top !== null && now - top.at >= SETTLE_MS) {
+      base = top
+      top = null
+    }
+    const shownBase = base ?? draw()
+    // The desktop draws an interactive Svg as a frame styled `width: <width>px; max-width: 100%`, and
+    // a frame given no width is the browser's default 300px. So the frame is asked for MAX_W and
+    // the band's own width holds it to the band: it fills the band up to MAX_W, at a width that no
+    // reported column count sets, and the drawing inside reads that width.
+    // A redraw keeps a frame whose element is unchanged and does not move it, so the base frame
+    // stays where it is, in the flow; the top one lies over it, absolute, and turns into the base in place.
     return (
       <Box key="witcher-hud" width="100%" overflow="hidden">
-        <Svg source={source} alt={alt} height={H} isInteractive />
+        <Box width="100%">
+          <Svg source={shownBase.source} alt={shownBase.alt} width={MAX_W} height={H} isInteractive />
+        </Box>
+        {top === null ? null : (
+          <Box position="absolute" top={0} left={0} width="100%">
+            <Svg source={top.source} alt={top.alt} width={MAX_W} height={H} isInteractive />
+          </Box>
+        )}
       </Box>
     )
   })

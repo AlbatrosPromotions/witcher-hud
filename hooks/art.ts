@@ -121,17 +121,20 @@ const vars = (p: Palette) =>
 
 const FONT_FACE = `@font-face{font-family:'${TITLE_FAMILY}';src:url(data:font/woff2;base64,${TITLE_WOFF2}) format('woff2')}`
 
+// The motions' lengths, in ms; a redraw starts each where the last drawing had it (see `phase`).
+export const MOTION_MS = { shake: 900, breathe: 2400, drainAfter: 450, drain: 800, pulse: 1200, glow: 1000 } as const
+
 const MOTION =
   '@keyframes whud-shake{0%{transform:rotate(0)}12%{transform:rotate(-7deg)}24%{transform:rotate(6deg)}36%{transform:rotate(-4deg)}48%{transform:rotate(2deg)}60%,100%{transform:rotate(0)}}' +
   '@keyframes whud-breathe{0%,100%{opacity:.2}50%{opacity:.65}}' +
   '@keyframes whud-drain{from{transform:scaleX(1)}to{transform:scaleX(0)}}' +
   '@keyframes whud-pulse{0%,100%{opacity:0}12%{opacity:.5}24%{opacity:0}36%{opacity:.3}48%{opacity:0}}' +
   '@keyframes whud-glow{0%,100%{opacity:.35}50%{opacity:1}}' +
-  `.shake{transform-box:view-box;transform-origin:${MID}px ${MID}px;animation:whud-shake .9s ease-out 1}` +
-  '.aura{animation:whud-breathe 2.4s ease-in-out infinite}' +
-  '.ghost{transform-box:fill-box;transform-origin:left center;animation:whud-drain .8s ease-in .45s forwards}' +
-  '.low{opacity:0;animation:whud-pulse 1.2s linear infinite}' +
-  '.levelup{animation:whud-glow 1s ease-in-out infinite}' +
+  `.shake{transform-box:view-box;transform-origin:${MID}px ${MID}px;animation:whud-shake ${MOTION_MS.shake}ms ease-out 1}` +
+  `.aura{animation:whud-breathe ${MOTION_MS.breathe}ms ease-in-out infinite}` +
+  `.ghost{transform-box:fill-box;transform-origin:left center;animation:whud-drain ${MOTION_MS.drain}ms ease-in ${MOTION_MS.drainAfter}ms forwards}` +
+  `.low{opacity:0;animation:whud-pulse ${MOTION_MS.pulse}ms linear infinite}` +
+  `.levelup{animation:whud-glow ${MOTION_MS.glow}ms ease-in-out infinite}` +
   '@media (prefers-reduced-motion:reduce){*{animation:none!important}.low,.ghost{opacity:0}}'
 
 const TITLE_FONT = `'${TITLE_FAMILY}', 'Hoefler Text', Baskerville, 'PT Serif', Georgia, serif`
@@ -147,13 +150,30 @@ const FRAME =
   '.sheet{display:none}.char:hover~.right .sheet{display:inline}.char:hover~.right .quest{display:none}' +
   '.v{display:none}'
 
-const style = (theme: Theme, ranges: string) =>
+// A redrawn HUD is a new frame, and a new frame starts its motions over: the medallion's aura would
+// jump back to its faintest, a shake or a draining ghost would play again. Each motion is started
+// instead where it stands at the drawing's time, so the new frame takes up the old one's motion.
+const phase = (c: Clock | undefined) => {
+  if (c === undefined) return ''
+  const ago = (at: number) => Math.max(0, Math.round(c.now - at))
+  const loop = (ms: number) => Math.round(((c.now % ms) + ms) % ms)
+  return (
+    `.aura{animation-delay:-${loop(MOTION_MS.breathe)}ms}` +
+    `.low{animation-delay:-${loop(MOTION_MS.pulse)}ms}` +
+    `.levelup{animation-delay:-${loop(MOTION_MS.glow)}ms}` +
+    (c.castAt === null ? '' : `.shake{animation-delay:-${ago(c.castAt)}ms}`) +
+    (c.ghostAt === null ? '' : `.ghost{animation-delay:${MOTION_MS.drainAfter - ago(c.ghostAt)}ms}`)
+  )
+}
+
+const style = (theme: Theme, ranges: string, clock?: Clock) =>
   '<style>' +
   FONT_FACE +
   (theme === 'auto'
     ? `svg{${vars(DARK)}}@media (prefers-color-scheme:light){svg{${vars(LIGHT)}}}`
     : `svg{${vars(theme === 'light' ? LIGHT : DARK)}}`) +
   MOTION +
+  phase(clock) +
   FRAME +
   ranges +
   '</style>'
@@ -242,8 +262,13 @@ const plate = (x0: number, x1: number, tip: number | null) => {
 
 export type Tips = { vitality: string; stamina: string; adrenaline: string; level: string }
 
+// When the drawing is made and when its one-off motions began, on the session's clock (ms).
+export type Clock = { now: number; castAt: number | null; ghostAt: number | null }
+
 export type CharacterArt = {
   theme: Theme
+  // Without it every motion starts at its beginning.
+  clock?: Clock
   sign: SignKey | null
   isWorking: boolean
   // A sign was just cast: the medallion shakes, once.
@@ -487,7 +512,7 @@ export const hudSvg = (B: Band[], a: HudArt): string => {
     '</g>'
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" class="hud" width="${MAX_W}" height="${H}">` +
-    style(a.theme, css()) +
+    style(a.theme, css(), a.clock) +
     `<defs>${DEFS}${CHARACTER_DEFS}${FROM_MID}</defs>` +
     body +
     '</svg>'

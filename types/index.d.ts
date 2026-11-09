@@ -39,6 +39,8 @@ declare module 'claude-code' {
       adrenaline: Adrenaline
       levelUp: number | null
       isHidden: boolean
+      // Counts the desktop's redraws that take an old HUD frame away once the new one shows.
+      settled: number
     }
   }
 }
