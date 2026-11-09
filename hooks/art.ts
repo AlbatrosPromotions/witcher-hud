@@ -28,6 +28,29 @@ import {
   textWidth,
 } from './layout'
 import type { Band, Layout } from './layout'
+import {
+  FX_CSS,
+  FX_DARK,
+  FX_LIGHT,
+  ambientOf,
+  badgeMotion,
+  bannerFxOf,
+  bannersOf,
+  fxDefs,
+  hitOf,
+  plateLayers,
+  raysOf,
+  refillOf,
+  ringFlashOf,
+  rushOf,
+  spellAcross,
+  spellOver,
+  spellUnder,
+  trembleCss,
+  yieldCss,
+  YIELD_MS,
+} from './fx'
+import type { FxArt, PlateLayer } from './fx'
 import { GOLD_HI, SIGNS } from './lore'
 import type { QuestLine } from './lore'
 
@@ -74,6 +97,7 @@ const DARK: Palette = {
   'sign-axii': '#8EDC9D',
   'sign-aard': '#9DCDFF',
   'sign-quen': '#F2C14E',
+  ...FX_DARK,
 }
 
 // Parchment: the bright sign colours are darkened to stay legible on it.
@@ -112,6 +136,7 @@ const LIGHT: Palette = {
   'sign-axii': '#2B7A3E',
   'sign-aard': '#2A64A6',
   'sign-quen': '#8C6608',
+  ...FX_LIGHT,
 }
 
 const vars = (p: Palette) =>
@@ -166,14 +191,29 @@ const phase = (c: Clock | undefined) => {
   )
 }
 
-const style = (theme: Theme, ranges: string, clock?: Clock) =>
+// The effects' own timing: the medallion trembling in danger, the quest stepping aside for its moments.
+const fxStyle = (a: CharacterArt) => {
+  const fx = a.fx
+  if (fx === undefined) return ''
+  const m = fx.meditating
+  return (
+    (isDanger(a) ? trembleCss(fx) : '') +
+    (m !== null ? `.qline{animation:whud-out ${YIELD_MS}ms ease-out ${Math.round(m.at - fx.now)}ms 1 both}` : yieldCss(fx))
+  )
+}
+
+const isDanger = (a: CharacterArt) => a.fx !== undefined && clamp(a.vitality, 0, 100) <= 20
+
+const style = (theme: Theme, ranges: string, clock?: Clock, fx = '') =>
   '<style>' +
   FONT_FACE +
   (theme === 'auto'
     ? `svg{${vars(DARK)}}@media (prefers-color-scheme:light){svg{${vars(LIGHT)}}}`
     : `svg{${vars(theme === 'light' ? LIGHT : DARK)}}`) +
   MOTION +
+  FX_CSS +
   phase(clock) +
+  fx +
   FRAME +
   ranges +
   '</style>'
@@ -245,7 +285,7 @@ const FROM_MID = `<clipPath id="from-mid"><rect x="${MID}" y="0" width="100%" he
 const anchored = (body: string) => `<svg class="anchor" x="100%" y="0" overflow="visible">${body}</svg>`
 
 // The plate's fill and its gold hairlines, x0 to x1 in this drawing, pointed at `tip` when it ends here.
-const plate = (x0: number, x1: number, tip: number | null) => {
+const plate = (x0: number, x1: number, tip: number | null, layers: PlateLayer[] = []) => {
   const fillPath =
     tip === null
       ? `M${x0} ${PLATE_TOP}H${x1}V${PLATE_BOTTOM}H${x0}Z`
@@ -256,6 +296,7 @@ const plate = (x0: number, x1: number, tip: number | null) => {
       : `M${x0} ${PLATE_TOP + 0.5}H${tip - TIP}L${tip - 0.7} ${MID}L${tip - TIP} ${PLATE_BOTTOM - 0.5}H${x0}`
   return (
     `<path d="${fillPath}" fill="url(#plate)"/>` +
+    layers.map(l => `<path${l.cls ? ` class="${l.cls}"` : ''} d="${fillPath}" style="fill:${l.fill}${l.css ? `;${l.css}` : ''}"/>`).join('') +
     `<path d="${rim}" fill="none" stroke-width="1" stroke-opacity=".8" stroke-linejoin="miter" ${strokeOf('rim')}/>`
   )
 }
@@ -281,6 +322,8 @@ export type CharacterArt = {
   xpFraction: number
   isLevelUp: boolean
   tips: Tips
+  // The effects; without them the HUD is drawn as it always was.
+  fx?: FxArt
 }
 
 const medallion = (L: Layout, a: CharacterArt) => {
@@ -304,12 +347,14 @@ const medallion = (L: Layout, a: CharacterArt) => {
   // The glyphs are drawn for a ring of 18.2 around (20, 20).
   const k = r1(ring / 18.2 * 100) / 100
   return (
-    `<g${a.isCasting ? ' class="shake"' : ''}>` +
+    spellUnder(a.fx) +
+    `<g${a.isCasting ? ' class="shake"' : ''}><g${isDanger(a) ? ' class="tremble"' : ''}>` +
     aura +
     `<circle cx="${cx}" cy="${cy}" r="${ring}" fill="url(#well)" stroke="url(#gold)" stroke-width="2"/>` +
     `<circle cx="${cx}" cy="${cy}" r="${ring - 3}" fill="none" stroke="#5E4520" stroke-width=".8"/>` +
     `<path d="${ticks}" stroke="#8C6A2E" stroke-width=".7"/>${studs}` +
-    `<g filter="url(#glow)" transform="translate(${cx} ${cy}) scale(${k}) translate(-20 -20)">${glyph(a.sign, tint)}</g></g>`
+    `<g filter="url(#glow)" transform="translate(${cx} ${cy}) scale(${k}) translate(-20 -20)">${glyph(a.sign, tint)}</g></g></g>` +
+    spellOver(a.fx)
   )
 }
 
@@ -331,6 +376,7 @@ const bars = (L: Layout, a: CharacterArt) => {
         `<rect x="${vit.x + 1}" y="${vit.y + 2}" width="${vW}" height="1" fill="#FFCDBE" opacity=".35"/>`
       : '') +
     (isLow && vW > 0 ? `<rect class="low" x="${vit.x + 1}" y="${vit.y + 1}" width="${vW}" height="${vit.h - 2}" rx="1" fill="#FF7A62"/>` : '') +
+    refillOf(L, a.fx) +
     text(L.numbers.x, L.numbers.vitCentre, SIZE.vit, `${Math.round(v)}%`, `${fill(isLow ? 'low' : 'num', NUMS)} filter="url(#shadow)"`) +
     `</g>`
   if (sta === null || a.stamina === null) return vitality
@@ -364,8 +410,10 @@ const badge = (L: Layout, a: CharacterArt) => {
   const { cx, cy, ring, inner } = L.badge
   const ringPath = `M${cx} ${cy - ring}L${cx + ring} ${cy}L${cx} ${cy + ring}L${cx - ring} ${cy}Z`
   const xp = r1(clamp(a.xpFraction, 0, 1) * 100)
+  const pop = badgeMotion(a.fx)
   return (
-    `<g><title>${esc(a.tips.level)}</title>` +
+    raysOf(L, a.fx) +
+    `<g${pop ? ` style="${pop}"` : ''}><title>${esc(a.tips.level)}</title>` +
     `<path d="${ringPath}" fill="none" stroke-width="2" stroke-linejoin="round" ${strokeOf('ring')}/>` +
     (xp > 0
       ? `<path d="${ringPath}" pathLength="100" fill="none" stroke-width="2" stroke-linejoin="round" stroke-dasharray="${xp} 100" ${strokeOf('ring-fill')}/>`
@@ -375,7 +423,8 @@ const badge = (L: Layout, a: CharacterArt) => {
       : '') +
     `<path d="${diamond(cx, cy, inner)}" stroke="url(#gold)" stroke-width="1.2" ${fill('badge')}/>` +
     `<text class="tt" x="${cx}" y="${baselineAt(cy, SIZE.level)}" text-anchor="middle" font-size="${a.level >= 10 ? 11 : SIZE.level}" ${fill('badge-num', NUMS)}>${a.level}</text>` +
-    `</g>`
+    `</g>` +
+    ringFlashOf(L, a.fx)
   )
 }
 
@@ -405,12 +454,21 @@ const bullet = (tone: QuestLine['tone'], cx: number, cy: number) =>
   })[tone]
 
 // Each band's plate: pointed after the badge while the quest has no room, else reaching the right edge.
-const FLUID_PLATE = `<g clip-path="url(#from-mid)">${anchored(plate(-2 * MAX_W, 0, -1))}</g>`
-const plateOf = (L: Layout) => (L.quest === null ? plate(MID, L.plateEnd, L.plateEnd) : FLUID_PLATE)
+const plateOf = (L: Layout, layers: PlateLayer[]) =>
+  L.quest === null
+    ? plate(MID, L.plateEnd, L.plateEnd, layers)
+    : `<g clip-path="url(#from-mid)">${anchored(plate(-2 * MAX_W, 0, -1, layers))}</g>`
 
 // The character's own hover area, up to where the quest's room begins.
 const characterOf = (L: Layout, a: CharacterArt) =>
-  `<rect x="0" y="0" width="${L.split}" height="${H}" fill="transparent"/>` + bars(L, a) + pips(L, a) + badge(L, a) + divider(L)
+  `<rect x="0" y="0" width="${L.split}" height="${H}" fill="transparent"/>` +
+  ambientOf(L, a.fx) +
+  bars(L, a) +
+  hitOf(L, a.fx, a.vitality) +
+  pips(L, a) +
+  rushOf(L, a.fx, a.adrenaline) +
+  badge(L, a) +
+  divider(L)
 
 const titleOf = (L: Layout, title: string, ink: string) => {
   if (L.quest === null) return ''
@@ -502,18 +560,22 @@ export const hudSvg = (B: Band[], a: HudArt): string => {
   const { nameOf, css } = rangeClasses()
   const each = (draw: (L: Layout) => string) => perBand(B, nameOf, draw)
   const titleInk = a.line.tone === 'idle' ? 'idle-title' : 'title'
+  const layers = plateLayers(a.fx, isDanger(a))
   const body =
-    `<g class="plate">${each(plateOf)}</g>` +
+    `<g class="plate">${each(L => plateOf(L, layers))}</g>` +
+    // A cast's light along the plate's rims, where the plate reaches the right edge.
+    each(L => (L.quest === null ? '' : spellAcross(a.fx))) +
     `<g class="char">${medallion(B[0]!.L, a)}${each(L => characterOf(L, a))}</g>` +
     '<g class="right">' +
-    `<g class="quest">${each(L => titleOf(L, a.line.title, titleInk))}${each(L => lineHeadOf(L, a))}${each(L => lineTextOf(L, a))}</g>` +
+    `<g class="quest"><g class="qline">${each(L => titleOf(L, a.line.title, titleInk))}${each(L => lineHeadOf(L, a))}${each(L => lineTextOf(L, a))}</g>` +
+    `${each(L => bannersOf(L, a.fx))}${each(L => bannerFxOf(L, a.fx))}</g>` +
     `<g class="sheet">${each(L => titleOf(L, a.sheet.title, 'title'))}${each(L => statsOf(L, a.sheet.stats))}</g>` +
     each(L => crownsOf(L, a.crowns)) +
     '</g>'
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" class="hud" width="${MAX_W}" height="${H}">` +
-    style(a.theme, css(), a.clock) +
-    `<defs>${DEFS}${CHARACTER_DEFS}${FROM_MID}</defs>` +
+    style(a.theme, css(), a.clock, fxStyle(a)) +
+    `<defs>${DEFS}${CHARACTER_DEFS}${FROM_MID}${fxDefs(a.fx)}</defs>` +
     body +
     '</svg>'
   )

@@ -45,10 +45,14 @@ const art: HudArt = {
 
 const draw = (over: Partial<HudArt> = {}) => hudSvg(B, { ...art, ...over })
 
-test('levels double and the titles climb', () => {
-  expect(levelOf(0)).toEqual({ level: 1, title: 'Kaer Morhen Trainee', into: 0, need: 5000 })
-  expect(levelOf(5000)).toEqual({ level: 2, title: 'Survivor of the Grasses', into: 0, need: 10000 })
-  expect(levelOf(10 ** 9).title).toBe('White Wolf')
+test('levels climb on a square curve, and the titles with them', () => {
+  expect(levelOf(0)).toEqual({ level: 1, title: 'Kaer Morhen Trainee', into: 0, need: 250000 })
+  expect(levelOf(249999).level).toBe(1)
+  expect(levelOf(250000)).toEqual({ level: 2, title: 'Kaer Morhen Trainee', into: 0, need: 750000 })
+  expect(levelOf(1_000_000)).toEqual({ level: 3, title: 'Survivor of the Grasses', into: 0, need: 1250000 })
+  // Level 10 at 20M, a title every few levels, the last one at 40.
+  expect(levelOf(20_250_000)).toMatchObject({ level: 10, title: 'Monster Slayer' })
+  expect(levelOf(10 ** 9)).toMatchObject({ level: 64, title: 'Grandmaster of the Wolf' })
 })
 
 test('tools are cast as signs, with what they act on', () => {
@@ -147,7 +151,8 @@ test('a quest runs through the HUD on both surfaces', async ($, on) => {
   const step = { turnId: 't1', index: 0, model: 'claude-opus-5-5', messageCount: 1 }
   for await (const _ of $.turn.step(step));
   for await (const _ of $.turn.step({ ...step, index: 1 }));
-  expect(toasts).toEqual(['Level up! Ability point gained · Level 2: Survivor of the Grasses'])
+  // A few thousand tokens are far from the first level up.
+  expect(toasts).toEqual([])
 
   const desktop = await $.ui.mount({ plugin: 'witcher-hud', surface: 'desktop', component: 'AbovePrompt', props: band(true) })
   const svgs = await desktop.findAll({ type: 'Svg' })
@@ -156,7 +161,7 @@ test('a quest runs through the HUD on both surfaces', async ($, on) => {
   expect(String(svgs.at(-1)?.props.alt)).toContain('adrenaline 1 of 3')
   expect(svgs.at(-1)?.props.isInteractive).toBe(true)
   expect(String(svgs.at(-1)?.props.alt)).toContain('Fix the login redirect bug: Igni: npm test -- auth')
-  expect(String(svgs.at(-1)?.props.source)).toContain('>Survivor of the Grasses · Level 2</text>')
+  expect(String(svgs.at(-1)?.props.source)).toContain('>Kaer Morhen Trainee · Level 1</text>')
   // The sign was just cast: the medallion shakes once.
   expect(String(svgs.at(-1)?.props.source)).toContain('class="shake"')
 
@@ -285,7 +290,7 @@ test('the spinner and the closing line are reworded', async ($, on) => {
 
 test('Russian follows the Russian edition of the game', () => {
   expect(levelOf(0, 'ru').title).toBe('Ученик Каэр Морхена')
-  expect(levelOf(10 ** 9, 'ru').title).toBe('Белый Волк')
+  expect(levelOf(10 ** 9, 'ru').title).toBe('Гроссмейстер Школы Волка')
   expect(questLine('idle', '', 0, null, 'ru')).toEqual({ title: 'Каэр Морхен', objective: 'Дождитесь нового заказа', tone: 'idle' })
   expect(questLine('done', 'Почини вход', 2140, null, 'ru').objective).toBe('Задание выполнено · +2,1k опыта')
   expect(questLine('active', 'x', 0, { key: 'senses', detail: 'router.tsx' }, 'ru').objective).toBe('Ведьмачье чутьё: router.tsx')

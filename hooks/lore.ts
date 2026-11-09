@@ -51,6 +51,11 @@ export const isSignKey = (key: unknown): key is SignKey =>
 
 export type SpinnerMode = 'requesting' | 'responding' | 'thinking' | 'tool-input' | 'tool-use'
 
+// The kinds of sound the HUD makes, each turned on or off on its own; a sign can be, too.
+export type SoundGroup = 'signs' | 'quests' | 'levels' | 'monsters' | 'trophies' | 'meditation' | 'danger'
+export const SOUND_GROUPS: SoundGroup[] = ['signs', 'quests', 'levels', 'monsters', 'trophies', 'meditation', 'danger']
+export const SOUND_KEYS: string[] = [...SOUND_GROUPS, 'igni', 'aard', 'quen', 'yrden', 'axii', 'senses']
+
 type Words = {
   sign: Record<SignKey, { name: string; casting: string }>
   titles: string[]
@@ -90,6 +95,56 @@ type Words = {
   }
   // The character sheet the desktop shows while the pointer is on the character.
   hover: { title: (title: string, level: number) => string }
+  // What the HUD's moments say in the quest tracker's place.
+  moment: {
+    questDone: string
+    questFailed: string
+    levelUp: (level: number) => string
+    levelLine: (title: string) => string
+    monsterLine: (detail: string) => string
+    slain: string
+    slainLine: (name: string) => string
+    trophy: string
+    meditating: string
+    meditatingLine: string
+    restored: string
+    restoredLine: (v: number) => string
+    xp: (xp: string) => string
+  }
+  trophyToast: (name: string, does: string) => string
+  sound: Record<'on' | 'quiet' | 'off', string>
+  sounds: {
+    title: string
+    opened: string
+    notPlaced: string
+    volume: string
+    level: Record<'on' | 'quiet' | 'off', string>
+    turnOn: string
+    turnOff: string
+    listen: string
+    allOff: string
+    group: Record<SoundGroup, { name: string; when: string }>
+    state: (isOn: boolean) => string
+    muted: (name: string) => string
+    unmuted: (name: string) => string
+    usage: string
+  }
+  journal: {
+    title: string
+    opened: string
+    notPlaced: string
+    session: string
+    noQuests: string
+    bestiary: string
+    unknown: string
+    met: (n: number) => string
+    slain: (n: number) => string
+    trophies: (have: number, of: number) => string
+    signs: string
+    career: (quests: number, slain: number, casts: number, days: number) => string
+    thisSession: (xp: string) => string
+    hunting: string
+  }
 }
 
 // The Russian follows the game's own Russian edition: Игни, Квен, ведьмачье чутьё, кроны.
@@ -112,6 +167,8 @@ export const WORDS: Record<Lang, Words> = {
       'Silver Sword',
       'Wolf School Master',
       'White Wolf',
+      'Witcher of Legend',
+      'Grandmaster of the Wolf',
     ],
     idleTitle: 'Kaer Morhen',
     idle: 'Await your next contract',
@@ -139,7 +196,7 @@ export const WORDS: Record<Lang, Words> = {
       dark: 'HUD theme: dark.',
       light: 'HUD theme: light parchment.',
     },
-    command: 'Sheathe or draw the witcher HUD · /hud stats: character sheet · /hud lang en|ru · /hud theme auto|dark|light',
+    command: 'Sheathe or draw the witcher HUD · /hud journal · /hud stats: character sheet · /hud sound: sound settings · /hud lang en|ru · /hud theme auto|dark|light',
     levelShort: 'Lv',
     alt: {
       vitality: 'Vitality',
@@ -164,6 +221,63 @@ export const WORDS: Record<Lang, Words> = {
       contracts: n => `${n} contracts`,
     },
     hover: { title: (title, level) => `${title} · Level ${level}` },
+    moment: {
+      questDone: 'Quest completed',
+      questFailed: 'Quest failed',
+      levelUp: level => `Level ${level}`,
+      levelLine: title => `${title} · ability point gained`,
+      monsterLine: detail => `A monster appears · ${detail}`,
+      slain: 'Contract completed',
+      slainLine: name => `${name} slain · a new bestiary entry`,
+      trophy: 'Trophy',
+      meditating: 'Meditation',
+      meditatingLine: 'Time flows by the fire… the journal is condensed',
+      restored: 'Meditation complete',
+      restoredLine: v => `Vitality restored to ${v}%`,
+      xp: xp => `+${xp} XP`,
+    },
+    trophyToast: (name, does) => `Trophy: ${name} · ${does}`,
+    sound: { on: 'HUD sound on.', quiet: 'HUD sound quiet.', off: 'HUD sound off.' },
+    sounds: {
+      title: 'Sound',
+      opened: 'Sound settings opened.',
+      notPlaced: 'Widen the window to open the sound settings.',
+      volume: 'Volume',
+      level: { on: 'Full', quiet: 'Quiet', off: 'Off' },
+      turnOn: 'Turn on',
+      turnOff: 'Turn off',
+      listen: '▶ Listen',
+      allOff: 'All sound is off: pick a volume to hear any.',
+      group: {
+        signs: { name: 'Signs', when: 'each tool, as its sign is cast' },
+        quests: { name: 'Quests', when: 'a quest completed or failed' },
+        levels: { name: 'Level up', when: 'a new level' },
+        monsters: { name: 'Monsters', when: 'a monster met, a contract completed' },
+        trophies: { name: 'Trophies', when: 'a trophy won' },
+        meditation: { name: 'Meditation', when: '/compact, and the vitality it gives back' },
+        danger: { name: 'Danger', when: 'vitality down to 20%' },
+      },
+      state: isOn => (isOn ? 'on' : 'off'),
+      muted: name => `${name}: sound off.`,
+      unmuted: name => `${name}: sound on.`,
+      usage: `/hud sound opens the sound settings. /hud sound on|quiet|off sets the volume; /hud sound <${SOUND_KEYS.join('|')}> on|off turns one kind on or off.`,
+    },
+    journal: {
+      title: 'Witcher’s Journal',
+      opened: 'Journal opened.',
+      notPlaced: 'Widen the window to open the journal.',
+      session: 'Quests of this session',
+      noQuests: 'No quests yet. The board awaits.',
+      bestiary: 'Bestiary',
+      unknown: 'Not yet met',
+      met: n => `met ${n}`,
+      slain: n => `slain ${n}`,
+      trophies: (have, of) => `Trophies ${have} of ${of}`,
+      signs: 'Signs cast',
+      career: (quests, slain, casts, days) => `${quests} quests · ${slain} monsters slain · ${casts} signs · ${days} days on the Path`,
+      thisSession: xp => `this session +${xp} XP`,
+      hunting: 'hunting',
+    },
   },
   ru: {
     sign: {
@@ -183,6 +297,8 @@ export const WORDS: Record<Lang, Words> = {
       'Серебряный меч',
       'Мастер Школы Волка',
       'Белый Волк',
+      'Легендарный ведьмак',
+      'Гроссмейстер Школы Волка',
     ],
     idleTitle: 'Каэр Морхен',
     idle: 'Дождитесь нового заказа',
@@ -210,7 +326,7 @@ export const WORDS: Record<Lang, Words> = {
       dark: 'Тема HUD: тёмная.',
       light: 'Тема HUD: светлая, пергамент.',
     },
-    command: 'Убрать или вернуть HUD ведьмака · /hud stats: лист персонажа · /hud lang en|ru · /hud theme auto|dark|light',
+    command: 'Убрать или вернуть HUD ведьмака · /hud journal: журнал · /hud stats: лист персонажа · /hud sound: настройки звука · /hud lang en|ru · /hud theme auto|dark|light',
     levelShort: 'Ур',
     alt: {
       vitality: 'Жизненная сила',
@@ -235,6 +351,63 @@ export const WORDS: Record<Lang, Words> = {
       contracts: n => `заказов: ${n}`,
     },
     hover: { title: (title, level) => `${title} · Уровень ${level}` },
+    moment: {
+      questDone: 'Задание выполнено',
+      questFailed: 'Задание провалено',
+      levelUp: level => `Уровень ${level}`,
+      levelLine: title => `${title} · получено очко умений`,
+      monsterLine: detail => `Появилось чудовище · ${detail}`,
+      slain: 'Заказ выполнен',
+      slainLine: name => `${name}: чудовище повержено · новая запись в бестиарии`,
+      trophy: 'Трофей',
+      meditating: 'Медитация',
+      meditatingLine: 'Время течёт у костра… журнал сжимается',
+      restored: 'Медитация окончена',
+      restoredLine: v => `Жизненная сила восстановлена до ${v}%`,
+      xp: xp => `+${xp} опыта`,
+    },
+    trophyToast: (name, does) => `Трофей: ${name} · ${does}`,
+    sound: { on: 'Звук HUD включён.', quiet: 'Звук HUD тихий.', off: 'Звук HUD выключен.' },
+    sounds: {
+      title: 'Звук',
+      opened: 'Настройки звука открыты.',
+      notPlaced: 'Расширьте окно, чтобы открыть настройки звука.',
+      volume: 'Громкость',
+      level: { on: 'Полная', quiet: 'Тихая', off: 'Выкл.' },
+      turnOn: 'Включить',
+      turnOff: 'Выключить',
+      listen: '▶ Прослушать',
+      allOff: 'Весь звук выключен: выберите громкость, чтобы его слышать.',
+      group: {
+        signs: { name: 'Знаки', when: 'каждый инструмент, когда сотворён его знак' },
+        quests: { name: 'Задания', when: 'задание выполнено или провалено' },
+        levels: { name: 'Новый уровень', when: 'получен уровень' },
+        monsters: { name: 'Чудовища', when: 'встреча с чудовищем, выполненный заказ' },
+        trophies: { name: 'Трофеи', when: 'получен трофей' },
+        meditation: { name: 'Медитация', when: '/compact и восстановленная жизненная сила' },
+        danger: { name: 'Опасность', when: 'жизненная сила упала до 20%' },
+      },
+      state: isOn => (isOn ? 'вкл.' : 'выкл.'),
+      muted: name => `${name}: звук выключен.`,
+      unmuted: name => `${name}: звук включён.`,
+      usage: `/hud sound открывает настройки звука. /hud sound on|quiet|off задаёт громкость; /hud sound <${SOUND_KEYS.join('|')}> on|off включает или выключает один вид.`,
+    },
+    journal: {
+      title: 'Журнал ведьмака',
+      opened: 'Журнал открыт.',
+      notPlaced: 'Расширьте окно, чтобы открыть журнал.',
+      session: 'Задания этой сессии',
+      noQuests: 'Заданий пока нет. Доска объявлений ждёт.',
+      bestiary: 'Бестиарий',
+      unknown: 'Ещё не встречено',
+      met: n => `встречено ${n}`,
+      slain: n => `повержено ${n}`,
+      trophies: (have, of) => `Трофеи: ${have} из ${of}`,
+      signs: 'Сотворённые знаки',
+      career: (quests, slain, casts, days) => `заданий ${quests} · чудовищ повержено ${slain} · знаков ${casts} · дней на Пути ${days}`,
+      thisSession: xp => `за эту сессию +${xp} опыта`,
+      hunting: 'идёт охота',
+    },
   },
 }
 
@@ -292,20 +465,31 @@ export const fmt = (n: number, lang: Lang = 'en') =>
 
 export const money = (usd: number, lang: Lang = 'en') => decimal(usd.toFixed(2), lang)
 
-const BASE = 5000
+// The career's experience to reach level L is BASE (L - 1)²: each level asks a little more than the
+// last, so the first come within a session and the later over weeks.
+const BASE = 250_000
+
+// The level each title is earned at.
+const TITLE_AT = [1, 3, 5, 8, 12, 16, 20, 25, 32, 40]
 
 // Cache reads are cheap, so they earn no experience.
 export const xpOf = (t: Totals) => t.input + t.cacheWrite + t.output
 
-// Level L spans [BASE * (2^(L-1) - 1), BASE * (2^L - 1)): each level needs twice the last.
-export const levelOf = (xp: number, lang: Lang = 'en') => {
-  let level = 1
-  while (xp >= BASE * (2 ** level - 1)) level += 1
-  const floor = BASE * (2 ** (level - 1) - 1)
-  const need = BASE * 2 ** (level - 1)
+export const titleOf = (level: number, lang: Lang = 'en') => {
   const titles = WORDS[lang].titles
-  const title = titles[Math.min(level, titles.length) - 1] ?? titles[titles.length - 1] ?? ''
-  return { level, title, into: xp - floor, need }
+  let i = 0
+  while (i + 1 < TITLE_AT.length && level >= TITLE_AT[i + 1]!) i++
+  return titles[i] ?? ''
+}
+
+export const levelOf = (xp: number, lang: Lang = 'en') => {
+  let level = Math.floor(Math.sqrt(Math.max(0, xp) / BASE)) + 1
+  // Square roots of large numbers can land a hair either side of a level's threshold.
+  while (BASE * level * level <= xp) level += 1
+  while (level > 1 && BASE * (level - 1) * (level - 1) > xp) level -= 1
+  const floor = BASE * (level - 1) * (level - 1)
+  const need = BASE * level * level - floor
+  return { level, title: titleOf(level, lang), into: xp - floor, need }
 }
 
 // Adrenaline builds with tool calls that land and is lost to the first one that fails.
