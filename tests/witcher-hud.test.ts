@@ -73,6 +73,24 @@ test('tools are cast as signs, with what they act on', () => {
 test('quests are named after the first line of the prompt', () => {
   expect(questTitle('\n  fix the **login** bug\nand more')).toBe('Fix the login bug')
   expect(questTitle('   ')).toBe('')
+  // What the engine sends by itself names no quest.
+  expect(questTitle('<task-notification>\n<task-id>a1</task-id>\n</task-notification>')).toBe('')
+  expect(questTitle('<ci-monitor-event>checks failed</ci-monitor-event>')).toBe('')
+  expect(questTitle('[Request interrupted by user for tool use]')).toBe('')
+  expect(questTitle('[Artifact comment sent to Claude] Artifact: https://claude.ai/artifact/1')).toBe('')
+  // What it wraps around a prompt is taken off.
+  expect(questTitle('<system-reminder>\nnote\n</system-reminder>\nfix the bug')).toBe('Fix the bug')
+  expect(questTitle('<pasted_content id="4017">\nfix the bug\n</pasted_content id="4017">')).toBe('Fix the bug')
+  expect(questTitle('<!-- reply 1 -->\nfix the bug')).toBe('Fix the bug')
+  expect(questTitle('<command-message>review</command-message>\n<command-name>/review</command-name>\n<command-args>the api</command-args>')).toBe('The api')
+  expect(questTitle('<command-name>/review</command-name>\n<command-args></command-args>')).toBe('/review')
+  // So is what the prompt box folds away before the words.
+  expect(questTitle('@"/Users/a/some file.mp3" play this at the end')).toBe('Play this at the end')
+  expect(questTitle('[Image #1] why is this broken')).toBe('Why is this broken')
+  // The person's own words stay.
+  expect(questTitle('<div> is not centred')).toBe('<div is not centred')
+  expect(questTitle('@alice asked for this')).toBe('@alice asked for this')
+  expect(questTitle('[WIP] tidy the tests')).toBe('WIP tidy the tests')
   expect(clip('Refactor the whole payments module', 20)).toBe('Refactor the whole…')
   expect(questLine('done', 'Fix it', 2140, null).objective).toBe('Quest completed · +2.1k XP')
   expect(questLine('active', 'Fix it', 0, { key: 'igni', detail: 'npm test' }).objective).toBe('Igni: npm test')

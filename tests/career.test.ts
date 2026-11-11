@@ -106,6 +106,64 @@ const source = async ($: Engine, isWorking = true) => {
 
 const clips = (w: { sounds: { asset: string }[] }) => w.sounds.map(s => s.asset.replace(/^sounds\/|\.wav$/g, ''))
 
+test('a new chat starts from the bottom, however long the career', async ($, on) => {
+  const w = world(on, { store: { 'career:v1:s:old': { xp: 20_400_000, quests: 300 } } })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const fresh = await source($)
+  expect(fresh).toContain('>Kaer Morhen Trainee · Level 1</text>')
+  // The ring around the badge is drawn only with some experience in it.
+  expect(fresh).not.toContain('pathLength="100"')
+
+  // What this chat earns alone fills the ring, and the levels of the career don't come into it.
+  w.spend.push([100_000, 25_000])
+  await quest($, 'fix the login redirect bug', 't1')
+  expect(await source($)).toContain('stroke-dasharray="50 100"')
+  expect(w.toasts).toEqual([])
+
+  // The career is still all there, and says it is the career.
+  const stats = await hud($, 'stats')
+  expect(stats).toContain('Kaer Morhen Trainee · Level 1')
+  expect(stats).toContain('this session +125.0k XP')
+  expect(stats).toMatch(/Career: .* · Level 10/)
+})
+
+test('a chat picked up again keeps the level it had', async ($, on) => {
+  world(on, { store: { 'career:v1:s:s-now': { xp: 1_100_000 }, 'career:v1:s:old': { xp: 5_000_000 } } })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  expect(await source($)).toContain('· Level 3</text>')
+})
+
+test('/clear empties the badge at once, before the next quest', async ($, on) => {
+  let id = 's1'
+  const w = world(on, { id: () => id })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  w.spend.push([250_000, 100_000])
+  await quest($, 'fix the login redirect bug', 't1')
+  await complete($, 't1')
+  expect(await source($, false)).toContain('· Level 2</text>')
+
+  await $.session.end({ reason: 'clear', sessionId: 's1', resume: { id: 's1' } })
+  id = 's2'
+  const cleared = await source($, false)
+  expect(cleared).toContain('· Level 1</text>')
+  expect(cleared).not.toContain('pathLength="100"')
+  // What the cleared chat earned stays in the career.
+  expect(await hud($, 'stats')).toMatch(/Career: .* · Level 2/)
+})
+
+test('a turn the engine raised carries on the last quest under its own name', async ($, on) => {
+  const w = world(on)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  w.spend.push([1000, 500])
+  await quest($, 'fix the login redirect bug', 't1')
+  await complete($, 't1')
+  w.spend.push([1000, 500])
+  await quest($, '<task-notification>\n<task-id>abc</task-id>\n<status>completed</status>\n</task-notification>', 't2')
+  const shown = await source($)
+  expect(shown).toContain('Fix the login redirect bug')
+  expect(shown).not.toContain('task-notification')
+})
+
 test('the career lasts across sessions: its level, this session’s record, the trophies already won', async ($, on) => {
   const w = world(on, {
     store: {
@@ -116,8 +174,9 @@ test('the career lasts across sessions: its level, this session’s record, the 
     },
   })
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
-  // 5M of experience is level 5 before this session has spent a token.
-  expect(await source($)).toContain('>Novice Witcher · Level 5</text>')
+  // The badge counts this chat alone; 5M of experience is level 5 of the career.
+  expect(await source($)).toContain('>Kaer Morhen Trainee · Level 1</text>')
+  expect(await hud($, 'stats')).toContain('Career: Novice Witcher · Level 5')
 
   w.spend.push([2000, 1000])
   await quest($, 'fix the login redirect bug', 't1')
@@ -316,8 +375,8 @@ test('a headless run plays no sound and keeps no record', async ($, on) => {
   expect(sets.filter(k => k.startsWith('career:v1:s:'))).toEqual([])
 })
 
-test('a level gained across the career is toasted, played out and heard', async ($, on) => {
-  const w = world(on, { store: { 'career:v1:s:old': { xp: 249_000 } } })
+test('a level gained in the chat is toasted, played out and heard', async ($, on) => {
+  const w = world(on, { store: { 'career:v1:s:s-now': { xp: 249_000 } } })
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   expect(await source($)).toContain('>Kaer Morhen Trainee · Level 1</text>')
   w.spend.push([1500, 500])
@@ -457,8 +516,8 @@ test('the oldest records are rolled into one once there are many', async ($, on)
   expect(runs).toContain('career:v1:s:old-400')
   expect(runs).not.toContain('career:v1:s:old-0')
   expect(w.store.get('career:v1:base')).toMatchObject({ xp: 301_000, quests: 301 })
-  // Nothing is lost: 401 thousand experience, level 2.
-  expect(await source($)).toContain('>Kaer Morhen Trainee · Level 2</text>')
+  // Nothing is lost: 401 thousand experience, level 2 of the career.
+  expect(await hud($, 'stats')).toContain('Career: Kaer Morhen Trainee · Level 2')
 })
 
 test('moments queued at once are drawn two at a time, the Svg keeping every band', async ($, on) => {

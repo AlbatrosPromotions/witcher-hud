@@ -149,6 +149,7 @@ type Words = {
     slain: (n: number) => string
     trophies: (have: number, of: number) => string
     signs: string
+    careerHead: string
     career: (quests: number, slain: number, casts: number, days: number) => string
     thisSession: (xp: string) => string
     hunting: string
@@ -289,6 +290,7 @@ export const WORDS: Record<Lang, Words> = {
       slain: n => `slain ${n}`,
       trophies: (have, of) => `Trophies ${have} of ${of}`,
       signs: 'Signs cast',
+      careerHead: 'Career',
       career: (quests, slain, casts, days) => `${quests} quests · ${slain} monsters slain · ${casts} signs · ${days} days on the Path`,
       thisSession: xp => `this session +${xp} XP`,
       hunting: 'hunting',
@@ -426,6 +428,7 @@ export const WORDS: Record<Lang, Words> = {
       slain: n => `повержено ${n}`,
       trophies: (have, of) => `Трофеи: ${have} из ${of}`,
       signs: 'Сотворённые знаки',
+      careerHead: 'Карьера',
       career: (quests, slain, casts, days) => `заданий ${quests} · чудовищ повержено ${slain} · знаков ${casts} · дней на Пути ${days}`,
       thisSession: xp => `за эту сессию +${xp} опыта`,
       hunting: 'идёт охота',
@@ -464,9 +467,44 @@ export const detailOf = (input: Record<string, unknown>, tool: string): string =
   return oneLine(raw)
 }
 
+// The engine's own wrappers around a prompt: their tags carry a `-` or a `_`, a person's `<div>` does not.
+const ENVELOPE = /^<([a-z]+(?:[-_][a-z]+)+)(?:\s[^>]*)?>/i
+// Turns the engine raises itself: nobody asked anything, so the last quest goes on.
+const RAISED = new Set(['task-notification', 'ci-monitor-event', 'side-sessions-event', 'local-command-stdout', 'local-command-stderr', 'local-command-caveat', 'create-pr-command'])
+const RAISED_NOTE = /^\[(?:Request interrupted|Artifact comment)/
+// What the prompt box leaves before the words: a file mentioned, an image or a paste folded away.
+const MENTION = /^@(?:"[^"\n]*"|[^\s"]*[/.][^\s"]*)\s*/
+const FOLDED = /^(?:\[(?:Image|Pasted text|File)\b[^\]\n]*\]|<!--[\s\S]*?-->)\s*/
+
+// What the person wrote, out of what the engine put around it; '' when they wrote nothing.
+const askedOf = (text: string): string => {
+  let rest = text.replace(/<\/?pasted_content\b[^>]*>/g, '').trimStart()
+  let command = ''
+  let args = ''
+  for (;;) {
+    if (RAISED_NOTE.test(rest)) return ''
+    const open = ENVELOPE.exec(rest)
+    if (open !== null) {
+      const tag = open[1]!
+      if (RAISED.has(tag)) return ''
+      const from = open[0].length
+      const close = rest.indexOf(`</${tag}>`, from)
+      if (close === -1) return rest
+      const inner = rest.slice(from, close).trim()
+      if (tag === 'command-name') command = inner
+      if (tag === 'command-args') args = inner
+      rest = rest.slice(close + tag.length + 3).trimStart()
+      continue
+    }
+    const lead = MENTION.exec(rest) ?? FOLDED.exec(rest)
+    if (lead === null || lead[0] === '') return rest || args || command
+    rest = rest.slice(lead[0].length).trimStart()
+  }
+}
+
 // A quest is named after the first line of what the person asked.
 export const questTitle = (text: string): string => {
-  const line = text.split('\n').map(oneLine).find(l => l !== '') ?? ''
+  const line = askedOf(text).split('\n').map(oneLine).find(l => l !== '') ?? ''
   const clean = oneLine(line.replace(/[`*_#>[\]]/g, ''))
   return clean === '' ? '' : clean[0]!.toUpperCase() + clean.slice(1)
 }
@@ -487,8 +525,8 @@ export const fmt = (n: number, lang: Lang = 'en') =>
 
 export const money = (usd: number, lang: Lang = 'en') => decimal(usd.toFixed(2), lang)
 
-// The career's experience to reach level L is BASE (L - 1)²: each level asks a little more than the
-// last, so the first come within a session and the later over weeks.
+// The experience to reach level L is BASE (L - 1)²: each level asks a little more than the last,
+// so a chat climbs the first few, and the career the later ones over weeks.
 const BASE = 250_000
 
 // The level each title is earned at.

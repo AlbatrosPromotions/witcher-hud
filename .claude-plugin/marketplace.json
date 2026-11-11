@@ -9,7 +9,7 @@
       "name": "witcher-hud",
       "source": "./",
       "description": "A Witcher 3 style HUD for Claude Code: a medallion that casts a sign for each tool, vitality for the context left, stamina for the rate limit, adrenaline for clean tool streaks, crowns for cost and a quest tracker; moments, effects and sounds for quests, level ups, monsters, trophies and meditation; and a career kept across sessions, with levels, a bestiary, trophies and a journal pane",
-      "version": "4.1.0"
+      "version": "4.1.1"
     }
   ]
 }

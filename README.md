@@ -6,7 +6,7 @@ Every prompt is a quest, every tool a sign, every token experience.
 </p>
 
 <p align="center">
-<img alt="Version 4.1.0" src="https://img.shields.io/badge/version-4.1.0-b08d57">
+<img alt="Version 4.1.1" src="https://img.shields.io/badge/version-4.1.1-b08d57">
 <img alt="A Claude Code plugin" src="https://img.shields.io/badge/Claude_Code-plugin-d97757">
 <img alt="English and Russian" src="https://img.shields.io/badge/speaks-English_%7C_%D0%A0%D1%83%D1%81%D1%81%D0%BA%D0%B8%D0%B9-6e6a5e">
 </p>
@@ -34,7 +34,7 @@ The HUD sits in one slim row above the prompt and plays the session as a hunt. I
  ▲ ▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂ 66%  ◆◆◇  Lv 5 ━━────  ⛁ 1.87  Fix the login redirect ◆ Igni: npm test
 ```
 
-It speaks English or Russian. Current version: 4.1.0.
+It speaks English or Russian. Current version: 4.1.1.
 
 ## Install
 
@@ -68,7 +68,7 @@ The hunt comes alive, and it lasts.
 - **Moments.** The plate plays out what happens: a quest completed or failed, a level up, a monster met when a tool fails and slain when it then succeeds, a trophy won, meditation while `/compact` runs. [See them all](#moments-and-effects).
 - **A burst for every sign.** Igni's embers, Aard's shockwave, Quen's shield, Yrden's glyph circle, Axii's rings, the red sweep of Witcher Senses.
 - **Sound.** Short original sounds for the signs and the moments. Out of the box only one plays: when Claude finishes. [Pick what you hear](#sound).
-- **A career.** The level, the bestiary and the trophies carry over from one session to the next, with ten titles from Kaer Morhen Trainee to Grandmaster of the Wolf. [More](#career).
+- **A level for each chat, and a career.** The badge starts over in every new chat. The career's level, the bestiary and the trophies carry over from one session to the next, with ten titles from Kaer Morhen Trainee to Grandmaster of the Wolf. [More](#career).
 - **The journal.** `/hud journal` opens a pane with this session's quests, the bestiary, the trophies and the signs cast.
 - **A livelier plate.** A flash when vitality drops, a red heartbeat when it runs low, and the time of day: dawn, day, dusk and a starry night.
 
@@ -88,7 +88,7 @@ The hunt comes alive, and it lasts.
 | **Vitality** (red) | Context window left. What a turn costs shows pale, then drains away. At 20% or less the bar pulses. |
 | **Stamina** (yellow) | What is left of the 5-hour rate limit, when the API reports one, with its figure; red at 15% or less. In a terminal it is the yellow line along the vitality cells. |
 | **Adrenaline** (a column of pips on the desktop, filling from the bottom) | A point for every 4 tool calls in a row that succeed, up to three. A failed tool costs all of it, a call you refuse costs nothing, and a point fades between quests. |
-| **Level** | Experience is input, cache-write and output tokens, subagents' included; cache reads earn none. It adds up over your whole career, every session together: level 2 takes 250,000 XP and level L takes 250,000 × (L − 1)², so level 10 is at 20.25M and level 64 at a billion. On the desktop the ring around the level badge fills with the way to the next; in a terminal a thin gold bar does. |
+| **Level** | Experience is input, cache-write and output tokens, subagents' included; cache reads earn none. The badge counts this chat alone: a new chat and `/clear` start at level 1 with an empty ring, and a chat you resume keeps its level. Level 2 takes 250,000 XP and level L takes 250,000 × (L − 1)², so level 10 is at 20.25M and level 64 at a billion. On the desktop the ring around the level badge fills with the way to the next; in a terminal a thin gold bar does. |
 | **Crowns** | The session's cost, as `/cost` totals it. |
 | **Quest tracker** | The prompt's first line as the quest's name, and the sign at work as the objective, in the sign's colour, with what it acts on in monospace: the command, the file, the pattern, the site. When the turn ends: quest completed with the XP it earned, abandoned if you interrupted it, or failed. |
 | **Character sheet** | On the desktop, the pointer on the medallion, bars or level shows the level's title, the experience to the next level, the tokens sent and generated, cache reads and model requests in the quest tracker's place. Each bar, the pips and the badge also show their numbers in a tooltip. |
@@ -300,7 +300,7 @@ The sounds: `quest-done`, `quest-failed`, `level-up`, `monster`, `slain`, `troph
 
 ## Career
 
-The level, the bestiary and the trophies last. The HUD keeps them on this computer in Claude Code's store for plugins and adds every session to them. Each session keeps its own record, and `/clear` starts a new one, so sessions running side by side never overwrite each other. Headless runs (`claude -p`) count for nothing.
+The career's level, the bestiary and the trophies last; the level on the badge belongs to the chat, and `/hud stats` and the journal show the career's. The HUD keeps them on this computer in Claude Code's store for plugins and adds every session to them. Each session keeps its own record, and `/clear` starts a new one, so sessions running side by side never overwrite each other. Headless runs (`claude -p`) count for nothing.
 
 - **Bestiary**: the eleven monsters above, each with how often you met and slew it, and its lore.
 - **Trophies**: eighteen, from First Contract (complete a quest) through Pyromancer (Igni 100 times), Flawless (24 clean casts in a row), Night Hunter (a quest completed between midnight and five), Griffin Slayer (mend a broken build), Inner Peace (meditate 5 times) and Epic Quest (1M XP in one quest) to A Hundred Contracts. Each is announced once, ever.
@@ -379,6 +379,7 @@ Claude Code writes `.claude-plugin/types/` and `tsconfig.json` each time it load
 
 ## Versions
 
+- **4.1.1** The level on the badge belongs to the chat again: a new chat and `/clear` start at level 1 with an empty ring, a resumed chat keeps its level, and the career's level stays in `/hud stats` and the journal. The quest tracker no longer shows the engine's own messages as a quest's name, such as `<task-notification` when a background task ends.
 - **4.1.0** A new sound when Claude finishes: a short fanfare, a lute running up to a major chord with brass, a drum and a bell, as loud as before and still original. `/hud sound file <sound> <path>` plays any MP3, WAV, M4A or AIFF file on your computer for one of the HUD's sounds, in every session; `/hud sound file` lists them and `/hud sound file <sound> reset` puts the HUD's clip back.
 - **4.0.1** The desktop HUD's words no longer run together. The desktop app blocks web fonts inside the HUD, so the embedded face never loaded and a wider fallback was drawn over widths measured for it; the HUD now draws with the system's Palatino and measures with its own widths. A two-digit level sits in the middle of its badge. A sound of your own: a clip in `sounds/local/`, named after the sound it replaces, plays instead and stays on your computer.
 - **4.0.0** The hunt comes alive and lasts. Moments play out on the desktop plate: a quest completed or failed, a level up, a monster met when a tool fails and slain when it then succeeds, a trophy, meditation while `/compact` runs and the vitality it gives back; with each sign's own burst, a hit flash, a low-vitality glow and the time of day. Sounds for the signs and the moments, only a quest's end on at first: `/hud sound` opens their settings, where each kind (or each sign) turns off on its own, and `/hud sound on|quiet|off` sets the volume. A career kept across sessions: the level counts all your experience on a new curve (250,000 XP to level 2, ten titles up to Grandmaster of the Wolf at level 40), a bestiary of eleven monsters, eighteen trophies, and `/hud journal`, a pane with the session's quests, the bestiary, the trophies and the signs. A subagent's prompt no longer renames the quest. The README shows it all in pictures.

@@ -161,9 +161,10 @@ const questNow = (q: unknown): Quest =>
   q !== null && typeof q === 'object' && typeof (q as { status?: unknown }).status === 'string' ? (q as Quest) : IDLE
 const careerNow = (c: Career | null): Career => c ?? EMPTY_CAREER
 
-// This session's experience, its run of deeds (earlier processes of it included), and the whole career.
+// This process's experience, this chat's (earlier processes of it included: the level on the badge
+// counts this alone, so a new chat starts over), its run of deeds, and the whole career.
 const sessionXpOf = (c: Career, t: Totals) => Math.max(0, xpOf(t) - c.xpBase)
-const careerXpOf = (c: Career, t: Totals) => c.others.xp + c.prior.xp + sessionXpOf(c, t)
+const chatXpOf = (c: Career, t: Totals) => c.prior.xp + sessionXpOf(c, t)
 const runOf = (c: Career, d: Deeds, t: Totals) => continueRun(c.prior, { ...d, xp: sessionXpOf(c, t) })
 const wholeOf = (c: Career, d: Deeds, t: Totals) => join(c.others, runOf(c, d, t))
 const one = (r: Record<string, number>, k: string) => ({ ...r, [k]: (r[k] ?? 0) + 1 })
@@ -539,14 +540,15 @@ const sheet = async ($: EngineInterface) => {
   const a = await read($, adrenaline)
   const c = careerNow(await read($, career))
   const whole = wholeOf(c, await read($, deeds), t)
-  const lv = levelOf(whole.xp, lang)
+  const lv = levelOf(chatXpOf(c, t), lang)
+  const all = levelOf(whole.xp, lang)
   const v = vitalityOf(m)
   const context = m.tokens !== undefined && m.window ? ` (${w.context(n(m.tokens), n(m.window))})` : ''
   const rows: [string, string][] = [
     [w.vitality, `${v === undefined ? '—' : `${v}%`}${context}`],
     [w.stamina, m.stamina === undefined ? '—' : w.staminaLeft(Math.round(m.stamina))],
     [w.adrenaline, `${adrenalineOf(a.streak)}/3 (${w.streak(a.streak)})`],
-    [w.experience, `${w.toLevel(n(lv.into), n(lv.need), lv.level + 1)} · ${j.thisSession(n(sessionXpOf(c, t)))}`],
+    [w.experience, `${w.toLevel(n(lv.into), n(lv.need), lv.level + 1)} · ${j.thisSession(n(chatXpOf(c, t)))}`],
     [w.crowns, m.usd === undefined ? '—' : `$${money(m.usd, lang)}`],
     [w.tokens, `↑${n(t.input + t.cacheWrite)} ↓${n(t.output)} · ${w.cache} ${n(t.cacheRead)} · ${w.contracts(t.calls)}`],
   ]
@@ -555,6 +557,7 @@ const sheet = async ($: EngineInterface) => {
     `${lv.title} · ${w.level} ${lv.level}`,
     ...rows.map(([label, value]) => label.padEnd(pad) + value),
     '',
+    `${j.careerHead}: ${all.title} · ${w.level} ${all.level}`,
     j.career(whole.quests, sum(whole.slain), sum(whole.casts), whole.days.length),
     j.trophies(Object.keys(c.trophies).length, TROPHIES.length),
   ].join('\n')
@@ -601,7 +604,12 @@ export const register: Register = (on, options) => {
       await save($)
       if (e.reason === 'clear' || e.reason === 'resume') {
         const t = await read($, totals)
-        await update($, career, c => ({ ...careerNow(c), id: '', xpBase: xpOf(t) }))
+        const d = await read($, deeds)
+        // The chat that ended joins the others at once, so the badge is empty before the next quest.
+        await update($, career, was => {
+          const c = careerNow(was)
+          return { ...c, id: '', others: join(c.others, runOf(c, d, t)), prior: NO_DEEDS, xpBase: xpOf(t) }
+        })
         await update($, deeds, () => NO_DEEDS)
         await update($, journal, () => [])
         await update($, hunt, () => ({}))
@@ -713,7 +721,7 @@ export const register: Register = (on, options) => {
     const u = r.usage
     if (u) {
       const c = careerNow(await read($, career))
-      const before = levelOf(careerXpOf(c, await read($, totals))).level
+      const before = levelOf(chatXpOf(c, await read($, totals))).level
       await update($, totals, t => ({
         input: t.input + u.input_tokens,
         output: t.output + u.output_tokens,
@@ -721,7 +729,7 @@ export const register: Register = (on, options) => {
         cacheWrite: t.cacheWrite + u.cache_creation_input_tokens,
         calls: t.calls + 1,
       }))
-      const after = levelOf(careerXpOf(careerNow(await read($, career)), await read($, totals)), lang)
+      const after = levelOf(chatXpOf(careerNow(await read($, career)), await read($, totals)), lang)
       if (after.level > before) {
         $.ui.toast(words.levelUp(after.level, after.title))
         await update($, levelUp, () => after.level)
@@ -839,7 +847,7 @@ export const register: Register = (on, options) => {
     const a = await read($, adrenaline)
     const leveledTo = await read($, levelUp)
     const c = careerNow(await read($, career))
-    const lv = levelOf(careerXpOf(c, t), lang)
+    const lv = levelOf(chatXpOf(c, t), lang)
     const vitality = vitalityOf(m) ?? 100
     const ghostFrom = g !== null && g.to === vitality ? g.from : null
     // The sign shows while Claude works; between quests the wolf rests on the medallion.
@@ -1018,6 +1026,7 @@ export const register: Register = (on, options) => {
     return (
       <Box flexDirection="column" gap={1}>
         <Box flexDirection="column">
+          {heading(j.careerHead)}
           <Text bold>{`◈ ${lv.title} · ${words.sheet.level} ${lv.level}`}</Text>
           <Box flexDirection="row" gap={1}>
             <Text color={GOLD}>{'━'.repeat(filled)}</Text>
@@ -1025,7 +1034,7 @@ export const register: Register = (on, options) => {
             <Text dimColor>{`${n(lv.into)} / ${n(lv.need)}`}</Text>
           </Box>
           <Text dimColor>{j.career(whole.quests, sum(whole.slain), sum(whole.casts), whole.days.length)}</Text>
-          <Text dimColor>{j.thisSession(n(sessionXpOf(c, t)))}</Text>
+          <Text dimColor>{j.thisSession(n(chatXpOf(c, t)))}</Text>
         </Box>
 
         <Box flexDirection="column">
